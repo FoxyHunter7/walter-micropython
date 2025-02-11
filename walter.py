@@ -36,10 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from machine import Pin, UART
 import time
-import uasyncio
-import uselect
-import sys
-import random
+import asyncio
 from queue import Queue
 
 CR = 13
@@ -109,11 +106,6 @@ The max nr of http profiles
 """
 WALTER_MODEM_MAX_HTTP_PROFILES = 3
 
-"""
-The max nr of tls profiles
-"""
-WALTER_MODEM_MAX_TLS_PROFILES = 3
-
 
 import _walter
 
@@ -130,12 +122,6 @@ def modem_bool(a_bool):
     else:
         return 0
 
-def modem_number(a_number):
-    if a_number:
-        return str(a_number)
-    else:
-        return ''
-    
 def pdp_type_as_string(pdp_type):
     if pdp_type == _walter.ModemPDPType.X25:
         return '"X.25"'
@@ -231,7 +217,7 @@ class Modem:
         self._reg_state = _walter.ModemNetworkRegState.NOT_SEARCHING
 
         """The PIN code when required for the installed SIM."""
-        self._simPIN = None
+        self._sim_PIN = None
 
         """The chosen network selection mode."""
         self._network_sel_mode = _walter.ModemNetworkSelMode.AUTOMATIC
@@ -264,14 +250,8 @@ class Modem:
         self._http_current_profile = 0xff
 
         """GNSS fix waiters"""
-        self._gnss_fix_lock = uasyncio.Lock()
+        self._gnss_fix_lock = asyncio.Lock()
         self._gnss_fix_waiters = []
-
-        """Status of the MQTT connection"""
-        self._mqtt_status = _walter.ModemMqttState.DISCONNECTED
-
-        """Inbox for MQTT messages"""
-        self._mqtt_messages = []
 
     async def _queue_rx_buffer(self):
         """Copy the currently received data buffer into the task queue.
@@ -308,7 +288,7 @@ class Modem:
         self._parser_data.line += chr(data)
 
     async def _uart_reader(self):
-        rx_stream = uasyncio.StreamReader(self._uart, {})
+        rx_stream = asyncio.StreamReader(self._uart, {})
 
         while True:
             incoming_uart_data = bytearray(256)
@@ -437,7 +417,7 @@ class Modem:
                 cmd.attempt = 1
                 cmd.attempt_start = time.time()
                 cmd.state = _walter.ModemCmdState.PENDING
-                return
+
             else:
                 tick_diff = time.time() - cmd.attempt_start
                 timed_out = tick_diff >= WALTER_MODEM_CMD_TIMEOUT
@@ -458,7 +438,7 @@ class Modem:
                         cmd.attempt += 1
                         cmd.attempt_start = time.time()
                         cmd.state = _walter.ModemCmdState.PENDING
-                        return
+
                 else:
                     return
 
@@ -466,7 +446,7 @@ class Modem:
             if cmd.state == _walter.ModemCmdState.NEW:
                 cmd.attempt_start = time.time()
                 cmd.state = _walter.ModemCmdState.PENDING
-                return
+
             else:
                 tick_diff = time.time() - cmd.attempt_start
                 if tick_diff >= WALTER_MODEM_CMD_TIMEOUT:
@@ -615,7 +595,6 @@ class Modem:
 
             parts = at_rsp.decode().split(',')
             
-            context_id = int(parts[0][len('+CGPADDR: '):])
             if len(parts) > 1 and parts[1]:
                 cmd.rsp.pdp_address_list.append(parts[1][1:-1])
             if len(parts) > 2 and parts[2]:
@@ -720,7 +699,8 @@ class Modem:
             socket_id = int(at_rsp[len('+SQNSH: '):].decode())
             try:
                 _socket = self._socket_set[socket_id - 1]
-            except:
+            except Exception as err:
+                print('(Modem, _process_queue_rsp; +SQNSH) unexpected error: ', err)
                 return
 
             self._socket = _socket
@@ -793,7 +773,7 @@ class Modem:
                             gnss_fix.sats.append(_walter.ModemGNSSSat(int(sat_no_str[1:]), int(sat_sig_str[:-1])))
 
                     # +1 for the comma
-                    part_no += 1
+                    part_no += 1;
                     start_pos = character_pos + 1
                     part = ''
 
@@ -847,51 +827,19 @@ class Modem:
                     elif part_no == 3:
                         if gnss_details:
                             gnss_details.time_to_update = int(part)
-                    elif part_no == 4:
-                        if gnss_details:
+                    elif part_no == 4 and gnss_details:
                             gnss_details.time_to_expire = int(part)
 
                     # +1 for the comma
-                    part_no += 1;
+                    part_no += 1
                     start_pos = character_pos + 1
                     part = ''
+                
 
-        elif at_rsp.startswith("+SQNSMQTTONCONNECT:0,"):
-            _, result_code_str = at_rsp[len("+SQNSMQTTONCONNECT:"):].decode().split(',')
-            result_code = int(result_code_str)
-
-            if result_code:
-                self._mqtt_status = _walter.ModemMqttState.DISCONNECTED
-            else:
-                self._mqtt_status = _walter.ModemMqttState.CONNECTED
-        
-        elif at_rsp.startswith("+SQNSMQTTONDISCONNECT:0,"):
-            _, result_code_str = at_rsp[len("+SQNSMQTTONDISCONNECT:"):].decode().split(',')
-            result_code = int(result_code_str)
-
-            # TODO: handle error message when resultcode != 0
-            self._mqtt_status = _walter.ModemMqttState.DISCONNECTED
-
-        elif at_rsp.startswith("+SQNSMQTTONMESSAGE:0,"):
-            parts = at_rsp[len("+SQNSMQTTONMESSAGE:"):].decode().split(',')
-            topic = parts[1].replace('"', '')
-            length = int(parts[2])
-            qos = int(parts[3])
-            if qos != 0 and len(parts) > 4:
-                message_id = parts[4]
-            else:
-                message_id = None
-            self._mqtt_messages.append(_walter.ModemMqttMessage(topic, length, qos, message_id))
-
-        elif cmd and cmd.at_cmd.startswith("AT+SQNSMQTTRCVMESSAGE=0"):
-            if cmd.rsp.type != _walter.ModemRspType.MQTT:
-                cmd.rsp.type = _walter.ModemRspType.MQTT
-                cmd.rsp.mqtt_data = at_rsp.decode()
-
-        # if cmd:
-        #     print('process rsp to cmd:' + str(cmd) + ' ' + str(cmd.at_cmd) + ' ' + str(at_rsp) + ' expecting ' + str(cmd.at_rsp))
-        # else:
-        #     print('process rsp without preceding cmd: ' + str(at_rsp))
+#        if cmd:
+#            print('process rsp to cmd:' + str(cmd) + ' ' + str(cmd.at_cmd) + ' ' + str(at_rsp) + ' expecting ' + str(cmd.at_rsp))
+#        else:
+#            print('process rsp without preceding cmd: ' + str(at_rsp))
 
         if not cmd or not cmd.at_rsp or cmd.type == _walter.ModemCmdType.TX or cmd.at_rsp != at_rsp[:len(cmd.at_rsp)]:
             return
@@ -899,7 +847,7 @@ class Modem:
         await self._finish_queue_cmd(cmd, result)
 
     async def _queue_worker(self):
-        tx_stream = uasyncio.StreamWriter(self._uart, {})
+        tx_stream = asyncio.StreamWriter(self._uart, {})
         cur_cmd = None
 
         while True:
@@ -908,7 +856,7 @@ class Modem:
                 qitem.cmd = await self._command_queue.get()
             else:
                 qitem = await self._task_queue.get()
-                if type(qitem) != _walter.ModemTaskQueueItem:
+                if not isinstance(qitem, _walter.ModemTaskQueueItem):
                     print('Invalid task queue item: %s %s' % (type(qitem), str(qitem)))
                     continue
 
@@ -976,7 +924,7 @@ class Modem:
         await cmd.event.wait()
         return cmd.rsp
 
-    def begin(self, main_function=None):
+    async def begin(self):
         self._uart = UART(2, baudrate=WALTER_MODEM_BAUD, bits=8, parity=None, stop=1, \
                 flow=UART.RTS|UART.CTS, tx=WALTER_MODEM_PIN_TX, \
                 rx=WALTER_MODEM_PIN_RX, cts=WALTER_MODEM_PIN_CTS, \
@@ -987,20 +935,12 @@ class Modem:
         self._command_queue = Queue()
         self._parser_data = _walter.ModemATParserData()
 
-        uasyncio.run(self.reset())
-        uasyncio.run(self.config_cme_error_reports(_walter.ModemCMEErrorReportsType.NUMERIC))
-        uasyncio.run(self.config_cereg_reports(_walter.ModemCEREGReportsType.ENABLED))
+        asyncio.wait_for(self.reset(), None)
+        asyncio.wait_for(self.config_cme_error_reports(_walter.ModemCMEErrorReportsType.NUMERIC), None)
+        asyncio.wait_for(self.config_cereg_reports(_walter.ModemCEREGReportsType.ENABLED), None)
 
-        uasyncio.run(self.runner(main_function))
-
-    async def runner(self, main_function):
-        reader_task = uasyncio.create_task(self._uart_reader())
-        worker_task = uasyncio.create_task(self._queue_worker())
-        user_task = uasyncio.create_task(main_function())
-
-        await reader_task
-        await worker_task
-        await user_task
+        asyncio.create_task(self._uart_reader())
+        asyncio.create_task(self._queue_worker())
 
     async def reset(self):
         reset_pin = Pin(WALTER_MODEM_PIN_RESET, Pin.OUT)
@@ -1012,27 +952,27 @@ class Modem:
         self.__init__()
 
         return await self._run_cmd('', b'+SYSSTART', None,
-                                   None, None,
-                                   _walter.ModemCmdType.WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+                None, None,
+                _walter.ModemCmdType.WAIT,
+                WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
 
     async def check_comm(self):
         return await self._run_cmd('AT', b'OK', None,
-                                   None, None,
-                                   _walter.ModemCmdType.TX_WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+                None, None,
+                _walter.ModemCmdType.TX_WAIT,
+                WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
 
     async def config_cme_error_reports(self, reports_type = _walter.ModemCMEErrorReportsType.NUMERIC):
         return await self._run_cmd('AT+CMEE=%d' % reports_type, b'OK', None,
-                                   None, None,
-                                   _walter.ModemCmdType.TX_WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+               None, None,
+               _walter.ModemCmdType.TX_WAIT,
+               WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
 
     async def config_cereg_reports(self, reports_type = _walter.ModemCEREGReportsType.ENABLED):
         return await self._run_cmd('AT+CEREG=%d' % reports_type, b'OK', None,
-                                   None, None,
-                                   _walter.ModemCmdType.TX_WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+                None, None,
+                _walter.ModemCmdType.TX_WAIT,
+                WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
 
     async def get_rssi(self):
         return await self._run_cmd('AT+CSQ', b'OK', None,
@@ -1057,15 +997,15 @@ class Modem:
 
     async def get_op_state(self):
         return await self._run_cmd('AT+CFUN?', b'OK', None,
-                                   None, None,
-                                   _walter.ModemCmdType.TX_WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+                None, None,
+                _walter.ModemCmdType.TX_WAIT,
+                WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
         
     async def set_op_state(self, op_state):
         return await self._run_cmd('AT+CFUN={}'.format(op_state), b'OK', None,
-                                   None, None,
-                                   _walter.ModemCmdType.TX_WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+                None, None,
+                _walter.ModemCmdType.TX_WAIT,
+                WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
         
     async def get_rat(self):
         return await self._run_cmd('AT+SQNMODEACTIVE?', b'OK', None,
@@ -1081,60 +1021,65 @@ class Modem:
 
     async def get_radio_bands(self):
         return await self._run_cmd("AT+SQNBANDSEL?", b"OK", None,
-                                   None, None,
-                                   _walter.ModemCmdType.TX_WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+            None, None,
+            _walter.ModemCmdType.TX_WAIT,
+            WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
 
     async def get_sim_state(self):
         return await self._run_cmd("AT+CPIN?", b"OK", None,
-                                   None, None,
-                                   _walter.ModemCmdType.TX_WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+            None, None,
+            _walter.ModemCmdType.TX_WAIT,
+            WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
 
     async def unlock_sim(self, pin = None):
-        self._simPIN = pin;
-        if self._simPIN == None:
+        self._sim_PIN = pin;
+        if self._sim_PIN == None:
             return await self.get_sim_state()
         
         return await self._run_cmd("AT+CPIN=%s" % pin, b"OK", None,
-                                   None, None,
-                                   _walter.ModemCmdType.TX_WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+            None, None,
+            _walter.ModemCmdType.TX_WAIT,
+            WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
 
-    async def set_network_selection_mode(self,
-        mode = _walter.ModemNetworkSelMode.AUTOMATIC,
-        operator_name = '', format = _walter.ModemOperatorFormat.LONG_ALPHANUMERIC):
-        
-        self._network_sel_mode = mode
-        self._operator.format = format
+    async def set_network_selection_mode(self, mode = _walter.ModemNetworkSelMode.AUTOMATIC, operator_name = '', format = _walter.ModemOperatorFormat.LONG_ALPHANUMERIC):
+        self._network_sel_mode = mode;
+        self._operator.format = format;
         self._operator.name = operator_name
 
         if mode == _walter.ModemNetworkSelMode.AUTOMATIC:
             return await self._run_cmd("AT+COPS=%d" % mode, b"OK", None,
-                                       None, None,
-                                       _walter.ModemCmdType.TX_WAIT,
-                                       WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+                None, None,
+                _walter.ModemCmdType.TX_WAIT,
+                WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
         else:
             return await self._run_cmd("AT+COPS={},{},{}".format(
-                self._network_sel_mode,self._operator.format,
-                modem_string(self._operator.name)), b"OK", None, None, None,
-                _walter.ModemCmdType.TX_WAIT, WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
+                self._network_sel_mode, self._operator.format,
+                modem_string(self._operator.name)), b"OK", None,
+                None, None,
+                _walter.ModemCmdType.TX_WAIT,
+                WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
 
-    async def create_PDP_context(self, apn = None,
-        auth_proto = _walter.ModemPDPAuthProtocol.NONE, auth_user = None,
-        auth_pass = None, auth_type = _walter.ModemPDPType.IP,
+    async def create_PDP_context(
+        self, apn = '',
+        auth_proto = _walter.ModemPDPAuthProtocol.NONE,
+        auth_user = None,
+        auth_pass = None,
+        auth_type = _walter.ModemPDPType.IP,
         pdp_address = None,
         header_comp = _walter.ModemPDPHeaderCompression.OFF,
         data_comp = _walter.ModemPDPDataCompression.OFF,
         ipv4_alloc_method = _walter.ModemPDPIPv4AddrAllocMethod.DHCP,
         request_type = _walter.ModemPDPRequestType.NEW_OR_HANDOVER,
         pcscf_method = _walter.ModemPDPPCSCFDiscoveryMethod.AUTO,
-        for_IMCN = False, use_NSLPI = True, use_secure_PCO = False,
+        for_IMCN = False,
+        use_NSLPI = True,
+        use_secure_PCO = False,
         use_NAS_ipv4_MTU_discovery = False,
-        use_local_addr_ind = False, use_NAS_on_IPMTU_discovery = False):
-        
+        use_local_addr_ind = False,
+        use_NAS_on_IPMTU_discovery = False
+    ):
         _ctx = None
-        for idx, ctx in enumerate(self._pdp_ctx_set):
+        for ctx in self._pdp_ctx_set:
             if ctx.state == _walter.ModemPDPContextState.FREE:
                 ctx.state = _walter.ModemPDPContextState.RESERVED
                 _ctx = ctx
@@ -1210,7 +1155,8 @@ class Modem:
                 _ctx = self._pdp_ctx
             else:
                 _ctx = self._pdp_ctx_set[context_id - 1]
-        except:
+        except Exception as err:
+            print('(Modem, set_PDP_context_active) unexpected error: ', err)
             return static_rsp(_walter.ModemState.NO_SUCH_PDP_CONTEXT)
         
         self._pdp_ctx = _ctx
@@ -1230,9 +1176,8 @@ class Modem:
 
     async def attach_PDP_context(self, attached = True):
         async def complete_handler(result, rsp, complete_handler_arg):
-            if result == _walter.ModemState.OK:
-                if self._pdp_ctx:
-                    self._pdp_ctx.state = _walter.ModemPDPContextState.ATTACHED
+            if result == _walter.ModemState.OK and self._pdp_ctx:
+                self._pdp_ctx.state = _walter.ModemPDPContextState.ATTACHED
 
         return await self._run_cmd("AT+CGATT={}".format(
             modem_bool(attached)),
@@ -1247,7 +1192,8 @@ class Modem:
                 _ctx = self._pdp_ctx
             else:
                 _ctx = self._pdp_ctx_set[context_id - 1]
-        except:
+        except Exception as err:
+            print('(Modem, get_PDP_address) unexpected error: ', err)
             return static_rsp(_walter.ModemState.NO_SUCH_PDP_CONTEXT)
         
         self._pdp_ctx = _ctx
@@ -1265,7 +1211,8 @@ class Modem:
                 _ctx = self._pdp_ctx
             else:
                 _ctx = self._pdp_ctx_set[pdp_context_id - 1]
-        except:
+        except Exception as err:
+            print('(Modem, create_socket) unexpected error: ', err)
             return static_rsp(_walter.ModemState.NO_SUCH_PDP_CONTEXT)
         
         self._pdp_ctx = _ctx
@@ -1310,7 +1257,8 @@ class Modem:
                 _socket = self._socket
             else:
                 _socket = self._socket_set[socket_id - 1]
-        except:
+        except Exception as err:
+            print('(Modem, config_socket) unexpected error: ', err)
             return static_rsp(_walter.ModemState.NO_SUCH_SOCKET)
         
         self._socket = _socket
@@ -1336,7 +1284,8 @@ class Modem:
                 _socket = self._socket
             else:
                 _socket = self._socket_set[socket_id - 1]
-        except:
+        except Exception as err:
+            print('(Modem, create_socket) unexpected error: ', err)
             return static_rsp(_walter.ModemState.NO_SUCH_SOCKET)
         
         self._socket = _socket
@@ -1368,7 +1317,8 @@ class Modem:
                 _socket = self._socket
             else:
                 _socket = self._socket_set[socket_id - 1]
-        except:
+        except Exception as err:
+            print('(Modem, close_socket) unexpected error: ', err)
             return static_rsp(_walter.ModemState.NO_SUCH_SOCKET)
         
         self._socket = _socket
@@ -1391,7 +1341,8 @@ class Modem:
                 _socket = self._socket
             else:
                 _socket = self._socket_set[socket_id - 1]
-        except:
+        except Exception as err:
+            print('(Modem, socket_send) unexpected error: ', err)
             return static_rsp(_walter.ModemState.NO_SUCH_SOCKET)
         
         self._socket = _socket
@@ -1559,176 +1510,10 @@ class Modem:
                 ctx.state = _walter.ModemHttpContextState.EXPECT_RING
 
         if post_param == _walter.ModemHttpPostParam.UNSPECIFIED:
-            return await self._run_cmd("AT+SQNHTTPSND={},{},{},{}".format(
-                profile_id, send_cmd, modem_string(uri), len(data)),
+            return await self._run_cmd("AT+SQNHTTPSND={},{},{},{}".format(profile_id, send_cmd, modem_string(uri), len(data)),
                 b"OK", data, complete_handler, self._http_context_set[profile_id],
                 _walter.ModemCmdType.DATA_TX_WAIT, WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
         else:
-            return await self._run_cmd("AT+SQNHTTPSND={},{},{},{},\"{}\"".format(
-                profile_id, send_cmd, modem_string(uri), len(data), post_param),
+            return await self._run_cmd("AT+SQNHTTPSND={},{},{},{},\"{}\"".format(profile_id, send_cmd, modem_string(uri), len(data), post_param),
                 b"OK", data, complete_handler, self._http_context_set[profile_id],
                 _walter.ModemCmdType.DATA_TX_WAIT, WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-
-    """
-    Coroutine to configure a connection to an MQTT broker,
-    called internally just before establishing the connection.
-    """
-    async def _mqtt_config(self, client_id, user_name, password, tls_profile_id):
-        return await self._run_cmd("AT+SQNSMQTTCFG=0,{},{},{},{}".format(
-            modem_string(client_id), modem_string(user_name), modem_string(password), tls_profile_id),
-            b"OK", None, None, None, _walter.ModemCmdType.TX_WAIT, WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-
-    """
-    Disconnect from an MQTT broker
-    """
-    async def mqtt_disconnect(self):
-        return await self._run_cmd("AT+SQNSMQTTDISCONNECT=0",
-            b"+SQNSMQTTONDISCONNECT:0,0", None, None, None,
-            _walter.ModemCmdType.TX_WAIT, WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-
-    """
-    Coroutine to establish a connection to an MQTT broker,
-    also wrapping the configuration of the connection.
-    This follows the logic of the Arduino example.
-    """
-    async def mqtt_connect(self, server_name, port, client_id, user_name, password, tls_profile_id):
-        rsp = await self._mqtt_config(client_id, user_name, password, tls_profile_id)
-        if rsp.result != _walter.ModemState.OK:
-            print('Failed to configure mqtt client.')
-            return rsp
-        print('MQTT client configured.')
-        return await self._run_cmd("AT+SQNSMQTTCONNECT=0,{},{}".format(
-            modem_string(server_name), port),
-            b"+SQNSMQTTONCONNECT:0,0", None, None, None,
-            _walter.ModemCmdType.TX_WAIT, WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-
-    """
-    Coroutine to publish a new MQTT message to a given topic
-    """
-    async def mqtt_publish(self, topic, payload, qos):
-        return await self._run_cmd("AT+SQNSMQTTPUBLISH=0,{},{},{}".format(
-            modem_string(topic), qos, len(payload)),
-            b"+SQNSMQTTONPUBLISH:0,", payload, None, None,
-            _walter.ModemCmdType.DATA_TX_WAIT, WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-
-    """
-    Coroutine to subscribe to an MQTT topic
-    """
-    async def mqtt_subscribe(self, topic, qos):
-        return await self._run_cmd("AT+SQNSMQTTSUBSCRIBE=0,{},{}".format(
-            modem_string(topic), qos),
-            b"+SQNSMQTTONSUBSCRIBE:0,{}".format(modem_string(topic)), None, None, None,
-            _walter.ModemCmdType.TX_WAIT, WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-
-    """
-    Coroutine to set up a tls profile. The parameters are the slots in the NVRAM
-    of the modem. It is thus required to first store the certificates in the NVRAM
-    using the coroutines following below.
-    """
-    async def tls_config_profile(self, profile_id, tls_valid, tls_version,
-                                 ca_certificate_id, client_certificate_id,
-                                 client_priv_key_id):
-        if profile_id >= WALTER_MODEM_MAX_TLS_PROFILES:
-            return static_rsp(_walter.ModemState.NO_SUCH_PROFILE)
-        return await self._run_cmd("AT+SQNSPCFG={},{},\"\",{},{},{},{},\"\",\"\",0,0,0".format(
-            profile_id, tls_version, tls_valid, modem_number(ca_certificate_id),
-            modem_number(client_certificate_id), modem_number(client_priv_key_id)),
-            b"OK", None, None, None,
-            _walter.ModemCmdType.TX_WAIT, WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-
-    """
-    Coroutine to store a certificate or a key in the NVRAM of the modem
-    """
-    async def _tls_upload_key(self, is_private_key, slot_idx, key):
-        key_type = "privatekey" if is_private_key else "certificate"
-        return await self._run_cmd("AT+SQNSNVW={},{},{}".format(
-            modem_string(key_type), slot_idx, len(key)),
-            b"OK", key, None, None, _walter.ModemCmdType.DATA_TX_WAIT,
-            WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-
-    """
-    Coroutine to store certificates and/or keys in the NVRAM of the modem.
-    This is a wrapper for _tls_upload_key, which does the actual uploading.
-    Basically a copy of the Arduino example, including the slot numbers of the
-    NVRAM, which seem arbitrary.
-    """
-    async def tls_provision_keys(self, walter_certificate, walter_private_key, ca_certificate):
-        if walter_certificate:
-            rsp = await self._tls_upload_key(False, 5, walter_certificate)
-            if rsp.result != _walter.ModemState.OK:
-                print('Failed to upload client certificate.')
-                return rsp
-            print('Client certificate stored in NVRAM slot 5.')
-
-        if walter_private_key:
-            rsp = await self._tls_upload_key(True, 0, walter_private_key)
-            if rsp.result != _walter.ModemState.OK:
-                print('Failed to upload private key.')
-                return rsp
-            print('Private key stored in NVRAM slot 0.')
-
-        if ca_certificate:
-            rsp = await self._tls_upload_key(False, 6, ca_certificate)
-            if rsp.result != _walter.ModemState.OK:
-                print('Failed to upload CA certificate.')
-                return rsp
-            print('CA certificate stored in NVRAM slot 6.')
-
-        return static_rsp(_walter.ModemState.OK)
-
-    """
-    Coroutine to initiate delivery of an MQTT message by the modem
-    The payload of the MQTT message will be stored in the 'payload' property
-    of the corresponding ModemMqttMessage instance within the
-    _mqtt_messages list
-    """
-    async def _mqtt_receive_message(self, topic, message_id = None, max_length = None):
-        at_cmd = "AT+SQNSMQTTRCVMESSAGE=0,{}".format(modem_string(topic))
-        if message_id:
-            at_cmd += ",{}".format(message_id)
-        if max_length:
-            at_cmd += ",{}".format(max_length)
-        return await self._run_cmd(at_cmd, b"OK", None, None, None, 
-                                   _walter.ModemCmdType.TX_WAIT,
-                                   WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-
-    """
-    Coroutine to 'download' the payloads of all MQTT messages that are stored
-    in the buffer of the modem and have not yet been downloaded from the modem
-    into the controller.
-    The return value is the number of all downloaded messages.
-    """
-    async def mqtt_receive(self):
-        n = 0 
-        for msg in self._mqtt_messages:
-            if not msg.received:
-                rsp = await self._mqtt_receive_message(msg.topic, msg.message_id)
-                if rsp.result != _walter.ModemState.OK:
-                    print('Failed to receive MQTT message.')
-                elif rsp.type == _walter.ModemRspType.MQTT:
-                    msg.payload = rsp.mqtt_data
-                    msg.received = True
-                    n += 1
-            else:
-                # include messages in the count that have already been downloaded previously
-                n += 1
-        return n
-    """
-    Function to get the first of the 'received' messages in the list, 
-    'received' meaning the payload has been downloaded from the buffer
-    of the modem.
-    Return value is a ModemMqttMessage
-    """
-    def get_mqtt_message(self):
-        for msg in self._mqtt_messages:
-            if msg.received:
-                self._mqtt_messages.remove(msg)
-                return msg
-    """
-    Coroutine to turn off the modem
-    """
-    async def shutdown(self):
-        return await self._run_cmd("AT+SQNSSHDN",
-            b"+SHUTDOWN", None, None, None, _walter.ModemCmdType.TX_WAIT,
-            WALTER_MODEM_DEFAULT_CMD_ATTEMPTS)
-    
