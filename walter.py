@@ -194,7 +194,10 @@ def static_rsp(result):
 def bytes_to_str(byte_data):
     """Convert byte data to a string."""
     if isinstance(byte_data, bytearray):
-        return byte_data.decode('utf-8', 'ignore')
+        try:
+            return byte_data.decode('utf-8', 'replace')
+        except Exception:
+            return byte_data
     return byte_data
 
 class Modem:
@@ -225,7 +228,7 @@ class Modem:
         self._pdp_ctx_set = [_walter.ModemPDPContext(idx + 1) for idx in range(WALTER_MODEM_MAX_PDP_CTXTS)]
         """The list of PDP context."""
 
-        self._socket_set = [ _walter.ModemSocket(idx + 1) for idx in range(WALTER_MODEM_MAX_SOCKETS) ]
+        self._socket_list = [ _walter.ModemSocket(idx + 1) for idx in range(WALTER_MODEM_MAX_SOCKETS) ]
         """The list of sockets"""
 
         self._socket = None
@@ -256,7 +259,7 @@ class Modem:
 
         await self._task_queue.put(qitem)
 
-        self._parser_data.line = b''
+        self._parser_data.line = bytearray()
 
     def _add_at_byte_to_buffer(self, data, raw_mode_active):
         """
@@ -275,7 +278,7 @@ class Modem:
             self._parser_data.state = _walter.ModemRspParserState.END_LF
             return
 
-        self._parser_data.line += chr(data)
+        self._parser_data.line += bytes([data])
 
     async def _uart_reader(self):
         rx_stream = asyncio.StreamReader(self._uart, {})
@@ -635,8 +638,9 @@ class Modem:
                 cmd.rsp.type = _walter.ModemRspType.HTTP_RESPONSE
                 cmd.rsp.http_response = _walter.ModemHttpResponse()
                 cmd.rsp.http_response.http_status = self._http_context_set[self._http_current_profile].http_status
-                cmd.rsp.http_response.data = at_rsp[3:self._http_context_set[self._http_current_profile].content_length + 3]         # skip <<<
+                cmd.rsp.http_response.data = at_rsp[3:-len(b'\r\nOK\r\n')] # 3 skips: <<<
                 cmd.rsp.http_response.content_type = self._http_context_set[self._http_current_profile].content_type
+                cmd.rsp.http_response.content_length = self._http_context_set[self._http_current_profile].content_length
 
                 # the complete handler will reset the state,
                 # even if we never received <<< but got an error instead
@@ -694,7 +698,7 @@ class Modem:
         elif at_rsp.startswith("+SQNSH: "):
             socket_id = int(at_rsp[len('+SQNSH: '):].decode())
             try:
-                _socket = self._socket_set[socket_id - 1]
+                _socket = self._socket_list[socket_id - 1]
             except Exception as err:
                 print('walter.py - ERROR: (Modem, _process_queue_rsp; +SQNSH): ', err)
                 sys.print_exception(err)
@@ -1281,7 +1285,7 @@ class Modem:
         self._pdp_ctx = _ctx
 
         _socket = None
-        for socket in self._socket_set:
+        for socket in self._socket_list:
             if socket.state == _walter.ModemSocketState.FREE:
                 socket.state = _walter.ModemSocketState.RESERVED
                 _socket = socket
@@ -1319,7 +1323,7 @@ class Modem:
             if socket_id == -1:
                 _socket = self._socket
             else:
-                _socket = self._socket_set[socket_id - 1]
+                _socket = self._socket_list[socket_id - 1]
         except Exception as err:
             print('walter.py - ERROR: (Modem, config_socket): ', err)
             sys.print_exception(err)
@@ -1381,7 +1385,7 @@ class Modem:
             if socket_id == -1:
                 _socket = self._socket
             else:
-                _socket = self._socket_set[socket_id - 1]
+                _socket = self._socket_list[socket_id - 1]
         except Exception as err:
             print('walter.py - ERROR: (Modem, close_socket): ', err)
             sys.print_exception(err)
@@ -1406,7 +1410,7 @@ class Modem:
             if socket_id == -1:
                 _socket = self._socket
             else:
-                _socket = self._socket_set[socket_id - 1]
+                _socket = self._socket_list[socket_id - 1]
         except Exception as err:
             print('walter.py - ERROR: (Modem, socket_send): ', err)
             sys.print_exception(err)
