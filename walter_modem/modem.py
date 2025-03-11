@@ -4,13 +4,13 @@ from machine import Pin
 from .core import ModemCore
 import walter_modem.mixins as mixins
 from .enums import (
-    ModemCmdType,
-    ModemCMEErrorReportsType,
-    ModemCEREGReportsType,
-    ModemSQNMONIReportsType,
-    ModemNetworkSelMode,
-    ModemOperatorFormat,
-    ModemState
+    WalterModemCmdType,
+    WalterModemCMEErrorReportsType,
+    WalterModemCEREGReportsType,
+    WalterModemSQNMONIReportsType,
+    WalterModemNetworkSelMode,
+    WalterModemOperatorFormat,
+    WalterModemState
 )
 from .structs import (
     ModemRsp,
@@ -61,7 +61,7 @@ class Modem(
             rsp=rsp,
             at_cmd='',
             at_rsp=b'+SYSSTART',
-            cmd_type=ModemCmdType.WAIT
+            cmd_type=WalterModemCmdType.WAIT
         )
     
     async def check_comm(self, rsp: ModemRsp = None) -> bool:
@@ -96,7 +96,7 @@ class Modem(
 
     
     async def config_cme_error_reports(self,
-        reports_type: int = ModemCMEErrorReportsType.NUMERIC,
+        reports_type: int = WalterModemCMEErrorReportsType.NUMERIC,
         rsp: ModemRsp = None
     ) -> bool:
         """
@@ -105,7 +105,7 @@ class Modem(
         Changing this may affect error reporting.
 
         :param reports_type: The CME error report type.
-        :type reports_type: ModemCMEErrorReportsType
+        :type reports_type: WalterModemCMEErrorReportsType
         :param rsp: Reference to a modem response instance
 
         :return bool: True on success, False on failure
@@ -117,7 +117,7 @@ class Modem(
         )
     
     async def config_cereg_reports(self,
-        reports_type: int = ModemCEREGReportsType.ENABLED,
+        reports_type: int = WalterModemCEREGReportsType.ENABLED,
         rsp: ModemRsp = None
     ) -> bool:
         """
@@ -126,7 +126,7 @@ class Modem(
         Changing this may affect library functionality.
 
         :param reports_type: The CEREG status reports type.
-        :type reports_type: ModemCEREGReportsType
+        :type reports_type: WalterModemCEREGReportsType
         :param rsp: Reference to a modem response instance
 
         :return bool: True on success, False on failure
@@ -167,7 +167,7 @@ class Modem(
         )
     
     async def get_cell_information(self,
-        reports_type: int = ModemSQNMONIReportsType.SERVING_CELL,
+        reports_type: int = WalterModemSQNMONIReportsType.SERVING_CELL,
         rsp: ModemRsp = None
     ) -> bool:
         """
@@ -175,7 +175,7 @@ class Modem(
 
         :param reports_type: The type of cell information to retreive,
         defaults to the cell which is currently serving the connection.
-        :type reports_type: ModemSQNMONIReportsType
+        :type reports_type: WalterModemSQNMONIReportsType
         :param rsp: Reference to a modem response instance
 
         :return bool: True on success, False on failure
@@ -205,7 +205,7 @@ class Modem(
         Sets the operational state of the modem.
 
         :param op_state: The new operational state of the modem.
-        :type op_state: ModemOpState
+        :type op_state: WalterModemOpState
         :param rsp: Reference to a modem response instance
 
         :return bool: True on success, False on failure
@@ -235,14 +235,14 @@ class Modem(
         Sets the Radio Access Technology (RAT) for the modem.
 
         :param rat: The new RAT
-        :type rat: ModemRat
+        :type rat: WalterModemRat
         :param rsp: Reference to a modem response instance
 
         :return bool: True on success, False on failure
         """
         return await self._run_cmd(
             rsp=rsp,
-            at_cmd=f'AT+SQNMODEACTIVE={rat + 1}',
+            at_cmd=f'AT+SQNMODEACTIVE={rat}',
             at_rsp=b'OK'
         )
 
@@ -295,9 +295,9 @@ class Modem(
         )
 
     async def set_network_selection_mode(self,
-        mode: int = ModemNetworkSelMode.AUTOMATIC,
+        mode: int = WalterModemNetworkSelMode.AUTOMATIC,
         operator_name: str = '',
-        operator_format: int = ModemOperatorFormat.LONG_ALPHANUMERIC,
+        operator_format: int = WalterModemOperatorFormat.LONG_ALPHANUMERIC,
         rsp: ModemRsp = None
     ) -> bool:
         """
@@ -305,7 +305,7 @@ class Modem(
         This command is only available when the modem is in the fully operational state.
 
         :param mode: The network selection mode.
-        :type mode: ModemNetworkSelMode
+        :type mode: WalterModemNetworkSelMode
         :param operator_name: The network operator name in case manual selection has been chosen.
         :param operator_format: The format in which the network operator name is passed.
         :param rsp: Reference to a modem response instance
@@ -316,7 +316,7 @@ class Modem(
         self._operator.format = operator_format
         self._operator.name = operator_name
 
-        if mode == ModemNetworkSelMode.AUTOMATIC:
+        if mode == WalterModemNetworkSelMode.AUTOMATIC:
             return await self._run_cmd(
                 rsp=rsp,
                 at_cmd=f'AT+COPS={mode}',
@@ -349,9 +349,9 @@ class Modem(
 
         :param profile_id: Security profile id (1-6)
         :param tls_version: TLS version
-        :type tls_version: ModemTlsVersion
+        :type tls_version: WalterModemTlsVersion
         :param tls_validation: TLS validation level: nothing, URL, CA+period or all
-        :type tls_validation: ModemTlsValidation
+        :type tls_validation: WalterModemTlsValidation
         :param ca_certificate_id: CA certificate for certificate validation (0-19)
         :param client_certificate_id: Client TLS certificate index (0-19)
         :param client_private_key: Client TLS private key index (0-19)
@@ -360,7 +360,7 @@ class Modem(
         :return bool: True on success, False on failure
         """
         if profile_id > ModemCore.WALTER_MODEM_MAX_TLS_PROFILES or profile_id <= 0:
-            if rsp: rsp.result = ModemState.NO_SUCH_PROFILE
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
             return False
         
         cmd = 'AT+SQNSPCFG={},{},"",{}'.format(
@@ -373,13 +373,13 @@ class Modem(
 
         cmd += ','
         if client_certificate_id is not None:
-            cmd += f',{client_certificate_id}'
+            cmd += f'{client_certificate_id}'
         
         cmd += ','
         if client_private_key is not None:
-            cmd += f',{client_private_key}'
+            cmd += f'{client_private_key}'
 
-        cmd += ',"","",0'
+        cmd += ',"","",0,0,0'
         
         return await self._run_cmd(
             rsp=rsp,
@@ -402,7 +402,7 @@ class Modem(
             at_cmd=f'AT+SQNSNVW={modem_string(key_type)},{slot_idx},{len(key)}',
             at_rsp=b'OK',
             data=key,
-            cmd_type=ModemCmdType.DATA_TX_WAIT
+            cmd_type=WalterModemCmdType.DATA_TX_WAIT
         )
 
     # TODO: update docstring to match style of others

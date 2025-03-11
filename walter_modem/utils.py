@@ -4,20 +4,11 @@ import ubinascii
 
 
 from .enums import (
-    ModemPDPType
+    WalterModemPDPType
 )
 
 def get_mac() -> str:
     return ubinascii.hexlify(network.WLAN().config('mac'),':').decode()
-
-def bytes_to_str(byte_data):
-    """Convert byte data to a string."""
-    if isinstance(byte_data, bytearray):
-        try:
-            return byte_data.decode('utf-8', 'replace')
-        except Exception:
-            return byte_data
-    return byte_data
 
 def parse_cclk_time(time_str: str) -> float | None:
     """
@@ -86,34 +77,11 @@ def parse_gnss_time(time_str: str) -> float | None:
 
     return time_val
 
-def pdp_type_as_string(pdp_type: int) -> str:
-    if pdp_type == ModemPDPType.X25:
-        return '"X.25"'
-    if pdp_type == ModemPDPType.IP:
-        return '"IP"'
-    if pdp_type == ModemPDPType.IPV6:
-        return '"IPV6"'
-    if pdp_type == ModemPDPType.IPV4V6:
-        return '"IPV4V6"'
-    if pdp_type == ModemPDPType.OSPIH:
-        return '"OPSIH"'
-    if pdp_type == ModemPDPType.PPP:
-        return '"PPP"'
-    if pdp_type == ModemPDPType.NON_IP:
-        return '"Non-IP"'
-    return ''
-
 def modem_string(string: str) -> str:
-    if string:
-        return '"' + string + '"'
-    else:
-        return ''
+    return '""' if string is None else f'"{string}"'
 
-def modem_bool(a_bool):
-    if a_bool:
-        return 1
-    else:
-        return 0
+def modem_bool(b: bool) -> int:
+    return 1 if b else 0
 
 def log(level, msg):
     print(f'WalterModem [{level:<9}]: {msg}')

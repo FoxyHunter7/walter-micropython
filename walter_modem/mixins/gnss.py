@@ -1,26 +1,23 @@
 from ..core import ModemCore
 from ..enums import (
-    ModemGNSSSensMode,
-    ModemGNSSAcqMode,
-    ModemGNSSLocMode,
-    ModemGNSSAssistanceType,
-    ModemGNSSAction
+    WalterModemGNSSSensMode,
+    WalterModemGNSSAcqMode,
+    WalterModemGNSSLocMode,
+    WalterModemGNSSAssistanceType,
+    WalterModemGNSSAction
 )
 from ..structs import (
     ModemRsp,
     ModemGNSSFix,
     ModemGnssFixWaiter
 )
-from ..utils import (
-    modem_string
-)
 
 class ModemGNSS(ModemCore):
     async def config_gnss(
         self,
-        sens_mode: int = ModemGNSSSensMode.HIGH,
-        acq_mode: int = ModemGNSSAcqMode.COLD_WARM_START,
-        loc_mode: int = ModemGNSSLocMode.ON_DEVICE_LOCATION,
+        sens_mode: int = WalterModemGNSSSensMode.HIGH,
+        acq_mode: int = WalterModemGNSSAcqMode.COLD_WARM_START,
+        loc_mode: int = WalterModemGNSSLocMode.ON_DEVICE_LOCATION,
         rsp: ModemRsp = None
     ) -> bool:
         """
@@ -30,12 +27,12 @@ class ModemGNSS(ModemCore):
         Recommended to run at least once before using GNSS.
 
         :param sens_mode: The sensitivity mode.
-        :type sens_mode: ModemGNSSSensMode
+        :type sens_mode: WalterModemGNSSSensMode
         :param acq_mode: The acquisition mode.
-        :type acq_mode: ModemGNSSAcqMode
+        :type acq_mode: WalterModemGNSSAcqMode
         :param loc_mode: The GNSS location mode.
-        :type loc_mode: ModemGNSSLocMode
-        :type rsp: Reference to a modem response instance
+        :type loc_mode: WalterModemGNSSLocMode
+        :param rsp: Reference to a modem response instance
 
         :return bool: True on success, False on failure
         """
@@ -60,7 +57,7 @@ class ModemGNSS(ModemCore):
         )
     
     async def update_gnss_assistance(self,
-        type: int = ModemGNSSAssistanceType.REALTIME_EPHEMERIS, 
+        type: int = WalterModemGNSSAssistanceType.REALTIME_EPHEMERIS, 
         rsp: ModemRsp = None
     ) -> bool:
         """
@@ -69,7 +66,7 @@ class ModemGNSS(ModemCore):
         Real-time ephemeris being the most efficient type.
 
         :param type: The type of GNSS assistance data to update.
-        :type type: ModemGNSSAssistanceType
+        :type type: WalterModemGNSSAssistanceType
         :param rsp: Reference to a modem response instance
 
         :return bool: True on success, False on failure
@@ -81,21 +78,21 @@ class ModemGNSS(ModemCore):
         )
     
     async def perform_gnss_action(self,
-        action: int = ModemGNSSAction.GET_SINGLE_FIX,
+        action: int = WalterModemGNSSAction.GET_SINGLE_FIX,
         rsp: ModemRsp = None
     ) -> bool:
         """
         Programs the GNSS subsystem to perform a specified action.
 
         :param action: The action for the GNSS subsystem to perform.
-        :type action: ModemGNSSAction
+        :type action: WalterModemGNSSAction
         :param rsp: Reference to a modem response instance
 
         :return bool: True on success, False on failure
         """
-        if action == ModemGNSSAction.GET_SINGLE_FIX:
+        if action == WalterModemGNSSAction.GET_SINGLE_FIX:
             action_str = 'single'
-        elif action == ModemGNSSAction.CANCEL:
+        elif action == WalterModemGNSSAction.CANCEL:
             action_str = 'stop'
         else:
             action_str = ''
