@@ -19,7 +19,8 @@ from .enums import (
     ModemHttpContextState,
     ModemSocketState,
     ModemCMEErrorReportsType,
-    ModemCEREGReportsType
+    ModemCEREGReportsType,
+    ModemMqttState
 )
 
 from .structs import (
@@ -37,13 +38,16 @@ from .structs import (
     ModemGNSSAssistance,
     ModemCmd,
     ModemRsp,
-    ModemATParserData
+    ModemATParserData,
+    ModemMqttMessage
 )
 
 from .utils import (
     bytes_to_str,
     parse_cclk_time,
-    parse_gnss_time
+    parse_gnss_time,
+    modem_string,
+    log
 )
 
 class ModemCore:
@@ -96,6 +100,21 @@ class ModemCore:
     WALTER_MODEM_OPERATOR_MAX_SIZE = 16
     """The maximum number of characters of an operator name"""
 
+    WALTER_MODEM_MQTT_TOPIC_MAX_SIZE = 127
+    """The recommended mamximum number of characters in an MQTT topic"""
+
+    WALTER_MODEM_MQTT_MAX_PENDING_RINGS = 8
+    """The recommended maximum number of rings that can be pending for the MQTT protocol"""
+
+    WALTER_MODEM_MQTT_MAX_TOPICS = 4
+    """The recommended maximum allowed MQTT topics to subscribe to"""
+
+    WALTER_MODEM_MQTT_MIN_KEEP_ALIVE = 20
+    """The recommended minimum for the MQTT keep alive time"""
+
+    WALTER_MODEM_MQTT_MAX_MESSAGE_LEN = 4096
+    """The maximum MQTT payload length"""
+
     def __init__(self):
         self._op_state = ModemOpState.MINIMUM
         """The current operational state of the modem."""
@@ -139,6 +158,46 @@ class ModemCore:
         self._gnss_fix_waiters = []
         """GNSS fix waiters"""
 
+        self._mqtt_status = ModemMqttState.DISCONNECTED
+        """Status of the MQTT connection"""
+
+        self._mqtt_msg_buffer: list[ModemMqttMessage] = []
+        """Inbox for MQTT messages"""
+
+        self._mqtt_subscriptions: list[tuple[str, int]] = []
+
+    def _add_msg_to_mqtt_buffer(self, msg_id, topic, length, qos):
+        # According to modem documentation;
+        # A message with <qos>=0 doesn't have a <mid>,
+        # as this type of message is overwritten every time a new message arrives.
+        # No <mid> value is to be given to read a message with <qos>=0.
+        if qos == 0:
+            for msg in self._mqtt_msg_buffer:
+                if msg.qos == 0:
+                    msg.topic = topic
+                    msg.length = length
+                    msg.free = False
+                    msg.payload = None
+                    return
+
+        if qos > 0:
+            for msg in self._mqtt_msg_buffer:
+                if msg.message_id == msg_id and msg.topic == topic:
+                    return
+
+        for msg in self._mqtt_msg_buffer:
+            if msg.free:
+                msg.topic = topic
+                msg.length = length
+                msg.qos = qos
+                msg.message_id = msg_id
+                msg.payload = None
+                msg.free = False
+                return
+            
+        log('WARNING',
+            'Modem Library\'s MQTT Message Buffer is full, incoming message was dropped')
+
     async def _queue_rx_buffer(self):
         """
         Copy the currently received data buffer into the task queue.
@@ -181,12 +240,11 @@ class ModemCore:
         while True:
             incoming_uart_data = bytearray(256)
             size = await rx_stream.readinto(incoming_uart_data)
-            if self.debug_log:
+            if self.debug_log and size > 0:
                 for line in incoming_uart_data[:size].splitlines():
-                    print(
-                        'WalterModem (core, _uart_reader) - DEBUG: RX: '
-                        f'"{bytes_to_str(line)}"'
-                    )
+                    if len(line) > 0:
+                        log('DEBUG, RX', bytes_to_str(line))
+
             for b in incoming_uart_data[:size]:
                 if self._parser_data.state == ModemRspParserState.START_CR:
                     if b == ModemCore.CR:
@@ -292,10 +350,8 @@ class ModemCore:
     async def _process_queue_cmd(self, tx_stream, cmd):
         if cmd.type == ModemCmdType.TX:
             if self.debug_log:
-                print(
-                    f'WalterModem (core, _process_queue_cmd) - DEBUG: TX:'
-                    f'"{bytes_to_str(cmd.at_cmd)}"'
-                )
+                log('DEBUG, TX', bytes_to_str(cmd.at_cmd))
+
             tx_stream.write(cmd.at_cmd)
             tx_stream.write(b'\r\n')
             await tx_stream.drain()
@@ -305,10 +361,8 @@ class ModemCore:
         or cmd.type == ModemCmdType.DATA_TX_WAIT:
             if cmd.state == ModemCmdState.NEW:
                 if self.debug_log:
-                    print(
-                        'WalterModem (core, _process_queue_cmd) - DEBUG: TX: '
-                        f'"{bytes_to_str(cmd.at_cmd)}"'
-                    )
+                    log('DEBUG, TX', bytes_to_str(cmd.at_cmd))
+                    
                 tx_stream.write(cmd.at_cmd)
                 if cmd.type == ModemCmdType.DATA_TX_WAIT:
                     tx_stream.write(b'\n')
@@ -330,10 +384,8 @@ class ModemCore:
                             await self._finish_queue_cmd(cmd, ModemState.ERROR)
                     else:
                         if self.debug_log:
-                            print(
-                                'WalterModem (core, _process_queue_cmd) - DEBUG: TX: '
-                                f'"{bytes_to_str(cmd.at_cmd)}"'
-                            )
+                            log('DEBUG, TX', bytes_to_str(cmd.at_cmd))
+
                         tx_stream.write(cmd.at_cmd)
                         if cmd.type == ModemCmdType.DATA_TX_WAIT:
                             tx_stream.write(b'\n')
@@ -383,10 +435,8 @@ class ModemCore:
         elif at_rsp.startswith(b'>') or at_rsp.startswith(b'>>>'):
             if cmd and cmd.data and cmd.type == ModemCmdType.DATA_TX_WAIT:
                 if self.debug_log:
-                    print(
-                        'WalterModem (core, _process_queue_rsp) - DEBUG: TX: '
-                        f'"{bytes_to_str(cmd.data)}"'
-                    )
+                    log('DEBUG, TX', bytes_to_str(cmd.data))
+                    
                 tx_stream.write(cmd.data)
                 await tx_stream.drain()
 
@@ -545,7 +595,7 @@ class ModemCore:
                 if not cmd:
                     return
 
-                cmd.rsp.type = ModemRspType.HTTP_RESPONSE
+                cmd.rsp.type = ModemRspType.HTTP
                 cmd.rsp.http_response = ModemHttpResponse()
                 cmd.rsp.http_response.http_status = self._http_context_list[self._http_current_profile].http_status
                 cmd.rsp.http_response.data = at_rsp[3:-len(b'\r\nOK\r\n')] # 3 skips: <<<
@@ -744,6 +794,60 @@ class ModemCore:
                     start_pos = character_pos + 1
                     part = ''
 
+        elif at_rsp.startswith("+SQNSMQTTONCONNECT:0,"):
+            _, result_code_str = at_rsp[len("+SQNSMQTTONCONNECT:"):].decode().split(',')
+            result_code = int(result_code_str)
+
+            if self._mqtt_status == ModemMqttState.CONNECTED:
+                for (topic, qos) in self._mqtt_subscriptions:
+                    asyncio.create_task(self._run_cmd(
+                        at_cmd=f'AT+SQNSMQTTSUBSCRIBE=0,{modem_string(topic)},{qos}',
+                        at_rsp=b'+SQNSMQTTONSUBSCRIBE:0,{}'.format(modem_string(topic)),
+                    ))
+
+            if result_code:
+                self._mqtt_status = ModemMqttState.DISCONNECTED
+            else:
+                self._mqtt_status = ModemMqttState.CONNECTED
+        
+        elif at_rsp.startswith("+SQNSMQTTONDISCONNECT:0,"):
+            _, result_code_str = at_rsp[len("+SQNSMQTTONDISCONNECT:"):].decode().split(',')
+            result_code = int(result_code_str)
+
+            if result_code != 0:
+                result = ModemState.ERROR
+
+            self._mqtt_status = ModemMqttState.DISCONNECTED
+            self._mqtt_subscriptions = []
+            for msg in self._mqtt_msg_buffer:
+                msg.free = True
+
+        elif at_rsp.startswith("+SQNSMQTTONMESSAGE:0,"):
+            parts = at_rsp[len("+SQNSMQTTONMESSAGE:"):].decode().split(',')
+            topic = parts[1].replace('"', '')
+            length = int(parts[2])
+            qos = int(parts[3])
+            if qos != 0 and len(parts) > 4:
+                message_id = parts[4]
+            else:
+                message_id = None
+
+            self._add_msg_to_mqtt_buffer(message_id, topic, length, qos)
+
+        elif at_rsp.startswith("+SQNSMQTTMEMORYFULL"):
+            log('WARNING',
+                'Sequans Modem\'s MQTT Memory full')
+
+            for msg in self._mqtt_msg_buffer:
+                msg.free = True
+
+        elif at_rsp and cmd.at_cmd.startswith("AT+SQNSMQTTRCVMESSAGE=0"):
+            if cmd.rsp.type != ModemRspType.MQTT:
+                cmd.rsp.type = ModemRspType.MQTT
+            
+            if isinstance(cmd.ring_return, list) and (at_rsp != b'OK' and at_rsp != b'ERROR'):
+                cmd.ring_return.append(at_rsp.decode())
+
         elif at_rsp.startswith(b"+SQNMONI"):
             if cmd is None:
                 return
@@ -821,12 +925,8 @@ class ModemCore:
             else:
                 qitem = await self._task_queue.get()
                 if not isinstance(qitem, ModemTaskQueueItem):
-                    if self.debug_log:
-                        print(
-                            'WalterModem (core, _queue_worker) - ERROR: '
-                            f'Invalid task queue item: {type(qitem)}, {str(qitem)}'
-                        )
-                    continue
+                    log('ERROR',
+                        f'Invalid task queue item: {type(qitem)}, {str(qitem)}')
 
             # process or enqueue new command or response
             if qitem.cmd:
@@ -848,9 +948,10 @@ class ModemCore:
                     cur_cmd = None
 
     async def _run_cmd(self,
-        rsp: ModemRsp | None,
         at_cmd: str,
         at_rsp: str, 
+        rsp: ModemRsp | None = None,
+        ring_return: list | None = None,
         cmd_type: int = ModemCmdType.TX_WAIT,
         data = None,
         complete_handler = None,
@@ -883,6 +984,7 @@ class ModemCore:
         cmd.at_cmd = at_cmd
         cmd.at_rsp = at_rsp
         cmd.rsp = rsp if rsp else ModemRsp()
+        cmd.ring_return = ring_return if ring_return is not None else None
         cmd.type = cmd_type
         cmd.data = data
         cmd.complete_handler = complete_handler
@@ -901,7 +1003,7 @@ class ModemCore:
 
         return (
             cmd.rsp.result == ModemState.OK or
-            (cmd.rsp.type == ModemRspType.HTTP_RESPONSE and cmd.rsp.result == ModemState.NO_DATA)
+            (cmd.rsp.type == ModemRspType.HTTP and cmd.rsp.result == ModemState.NO_DATA)
         )
 
     async def begin(self, debug_log: bool = False):

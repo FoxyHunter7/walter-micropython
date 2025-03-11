@@ -1,14 +1,17 @@
 import asyncio
 import network
 import sys
-import ubinascii
 
 from walter_modem import Modem
 
 from walter_modem.enums import (
     ModemNetworkRegState,
+    ModemState,
     ModemOpState,
     ModemNetworkSelMode,
+    ModemPDPAuthProtocol,
+    ModemTlsValidation,
+    ModemTlsVersion
 )
 
 from walter_modem.structs import (
@@ -23,21 +26,25 @@ modem = Modem()
 The modem instance
 """
 
-counter = 0
-"""
-The counter used in the ping packets
-"""
-
-socket_id = None
-"""
-The id of the socket
-"""
-
 modem_rsp = ModemRsp()
 """
 The modem response object.
 We re-use this single one, for memory efficiency.
 """
+
+def match_auth_proto():
+    if config.AUTH_PROTOCOL == 'PAP': return ModemPDPAuthProtocol.PAP
+    if config.AUTH_PROTOCOL == 'CHAP': return ModemPDPAuthProtocol.CHAP
+    return ModemPDPAuthProtocol.NONE
+
+pdp_auth_proto = match_auth_proto()
+
+def get_unique_topic():
+    mac = network.WLAN().config('mac')
+    return f'walter/mqtt-example/{''.join('{:02X}'.format(byte) for byte in mac[-3:])}'
+
+
+topic = config.MQTT_TOPIC if config.MQTT_TOPIC is not None else get_unique_topic()
 
 async def wait_for_network_reg_state(timeout: int, *states: ModemNetworkRegState) -> bool:
     """
@@ -111,10 +118,8 @@ async def lte_connect(_retry: bool = False) -> bool:
             
             return False
         
-        print('  - Failed to connect to LTE network using: '
-              f'{"LTE-M" if rat == ModemRat.LTEM else "NB-IoT"}')
-        print('  - Switching modem to '
-              f'{"NB-IoT" if rat == ModemRat.LTEM else "LTE-M"} and retrying...')
+        print(f'  - Failed to connect to LTE network using: {"LTE-M" if rat == ModemRat.LTEM else "NB-IoT"}')
+        print(f'  - Switching modem to {"NB-IoT" if rat == ModemRat.LTEM else "LTE-M"} and retrying...')
 
         next_rat = ModemRat.NBIOT if rat == ModemRat.LTEM else ModemRat.LTEM
 
@@ -143,32 +148,25 @@ async def unlock_sim() -> bool:
     return True
 
 async def setup():
-    global socket_id
     global modem_rsp
 
-    print('Walter Counter Example')
+    print('Walter MQTT Example')
     print('---------------')
-    print('Find your walter at: https://walterdemo.quickspot.io/')
-    print('Walter\'s MAC is: %s' % ubinascii.hexlify(network.WLAN().config('mac'),':').decode(),
-          end='\n\n')
+    print(f'Configured broker: {config.MQTT_SERVER_ADDRESS}:{config.MQTT_PORT}')
+    print(f'Topic: {topic}')
 
-    await modem.begin() 
+    await modem.begin()
 
     if not await modem.check_comm():
         print('Modem communication error')
         return False
-
-    if await modem.get_op_state(rsp=modem_rsp) and modem_rsp.op_state is not None:
-        print(f'Modem operatonal state: {ModemOpState.get_value_name(modem_rsp.op_state)}')
-    else:
-        print('Failed to retrieve modem operational state')
-        return False
-
+    
     if config.SIM_PIN != None and not await unlock_sim():
         return False
     
     if not await modem.create_PDP_context(
         apn=config.CELL_APN,
+        auth_proto=pdp_auth_proto,
         auth_user=config.APN_USERNAME,
         auth_pass=config.APN_PASSWORD,
         rsp=modem_rsp
@@ -182,55 +180,73 @@ async def setup():
     print('Connecting to LTE Network')
     if not await lte_connect():
         return False
-   
-    print('Creating socket')
-    if await modem.create_socket(pdp_context_id=modem_rsp.pdp_ctx_id, rsp=modem_rsp):
-        socket_id = modem_rsp.socket_id
-    else:
-        print('Failed to create socket')
-        return False   
-
-    print('Configuring socket')
-    if not await modem.config_socket(socket_id=socket_id):
-        print('Failed to config socket')
-        return False
     
-    print('Connecting socket')
-    if not await modem.connect_socket(
-        remote_host=config.SERVER_ADDRESS,
-        remote_port=config.SERVER_PORT,
-        local_port=config.SERVER_PORT,
-        socket_id=socket_id
+    if not await modem.tls_config_profile(
+        profile_id=1,
+        tls_validation=ModemTlsValidation.NONE,
+        tls_version=ModemTlsVersion.TLS_VERSION_13
     ):
-        print('Failed to connect socket')
+        print('Failed to configure TLS profile')
         return False
     
+    print('Configurng MQTT')
+    if not await modem.mqtt_config(
+        user_name=config.MQTT_USERNAME,
+        password=config.MQTT_PASSWORD,
+        tls_profile_id=1
+    ):
+        print('Failed to configure MQTT')
+        return False
+    
+    print('Connecting to MQTT server')
+    if not await modem.mqtt_connect(
+        server_name=config.MQTT_SERVER_ADDRESS,
+        port=int(config.MQTT_PORT),
+    ):
+        print('Failed to connect to MQTT server')
+        return False
+    
+    print('Connected to MQTT server')
+
     return True
 
 async def loop():
-    global counter
-    global socket_id
-    data_buffer: bytearray = bytearray(network.WLAN().config('mac'))
-    data_buffer.append(counter >> 8)
-    data_buffer.append(counter & 0xff)
+    global modem_rsp
+    mqtt_messages = []
 
-    print('Attempting to transmit data')
-    if not await modem.socket_send(data=data_buffer, socket_id=socket_id):
-        print('Failed to transmit data')
-        return False
-    
-    print(f'Transmitted counter value: {counter}')
-    counter += 1
-
-    await asyncio.sleep(10)
+    if await modem.mqtt_did_ring(msg_list=mqtt_messages, rsp=modem_rsp):
+        print(f'New MQTT message (topic: {modem_rsp.mqtt_response.topic}, qos: {modem_rsp.mqtt_response.qos})')
+        print(mqtt_messages.pop())
+    else:
+        if modem_rsp.result != ModemState.NO_DATA:
+            print('Fault with mqtt_did_ring: '
+                  f'{ModemState.get_value_name(modem_rsp.result)}')
 
 async def main():
     try:
         if not await setup():
-            print('Failed to complete setup, raising runtime error to stop the script.')
+            print('Failed to complete setup, raising runtime error to stop the script')
             raise RuntimeError()
+        
+        if not await modem.mqtt_publish(
+            topic=topic,
+            data=config.MESSAGE,
+            qos=config.PUBLISH_QOS
+        ):
+            print('Failed to publish message')
+        print('Message Published')
+
+        if await modem.mqtt_subscribe(
+            topic=topic,
+            qos=config.SUBSCRIBE_QOS
+        ):
+            print(f'Subscribed to topic: "{topic}"')
+        else:
+            print('Failed to subscribe to topic, raising runtime error to stop the script')
+
         while True:
             await loop()
+            await asyncio.sleep(1)
     except Exception as err:
         print('ERROR: (boot.py, main): ')
         sys.print_exception(err)
