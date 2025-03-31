@@ -24,8 +24,6 @@ from .enums import (
 )
 
 from .structs import (
-    ModemOperator,
-    ModemPDPContext,
     ModemSocket,
     ModemHttpContext,
     ModemTaskQueueItem,
@@ -84,8 +82,11 @@ class ModemCore:
     WALTER_MODEM_MIN_VALID_TIMESTAMP = 1672531200
     """Any modem time below 1 Jan 2023 00:00:00 UTC is considered an invalid time."""
 
-    WALTER_MODEM_MAX_PDP_CTXTS = 8
-    """The maximum number of PDP contexts that the library can support."""
+    MIN_PDP_CTX_ID = 1
+    """The lowest possible pdp context ID"""
+
+    MAX_PDP_CTX_ID = 8
+    """The highest possible PDP context ID"""
 
     WALTER_MODEM_MAX_SOCKETS = 6
     """The maximum number of sockets that the library can support."""
@@ -124,18 +125,6 @@ class ModemCore:
         self._reg_state = WalterModemNetworkRegState.NOT_SEARCHING
         """The current network registration state of the modem."""
 
-        self._sim_PIN = None
-        """The PIN code when required for the installed SIM."""
-
-        self._network_sel_mode = WalterModemNetworkSelMode.AUTOMATIC
-        """The chosen network selection mode."""
-
-        self._operator = ModemOperator()
-        """An operator to use, this is ignored when automatic operator selectionis used."""
-        
-        self._pdp_ctxs = tuple(ModemPDPContext(idx + 1) for idx in range(ModemCore.WALTER_MODEM_MAX_PDP_CTXTS))
-        """The list of PDP contexts."""
-
         self._socket_list = [ModemSocket(idx + 1) for idx in range(ModemCore.WALTER_MODEM_MAX_SOCKETS) ]
         """The list of sockets"""
 
@@ -173,7 +162,7 @@ class ModemCore:
         """Whether or not the application has defined/set queue rsp handlers"""
 
         self._begun = False
-        """Whetehr or not the begin method has already been run."""
+        """Whether or not the begin method has already been run."""
 
     def _add_msg_to_mqtt_buffer(self, msg_id, topic, length, qos):
         # According to modem documentation;
@@ -416,7 +405,6 @@ class ModemCore:
                     await self._finish_queue_cmd(cmd, WalterModemState.TIMEOUT)
                 else:
                     return
-                
 
     async def _handle_data_tx_wait(self, tx_stream, cmd, at_rsp):
         if cmd and cmd.data and cmd.type == WalterModemCmdType.DATA_TX_WAIT:
@@ -475,7 +463,6 @@ class ModemCore:
             # the complete handler will reset the state,
             # even if we never received <<< but got an error instead
             return WalterModemState.OK
-
 
     async def _handle_sqn_http_ring(self, tx_stream, cmd, at_rsp):
         profile_id_str, http_status_str, content_type, content_length_str = at_rsp[len("+SQNHTTPRING: "):].decode().split(',')
@@ -757,7 +744,6 @@ class ModemCore:
         cmd.rsp.type = WalterModemRspType.OP_STATE
         cmd.rsp.op_state = self._op_state
         return WalterModemState.OK
-
 
     async def _handle_csq(self, tx_stream, cmd, at_rsp):
         if not cmd:
@@ -1074,6 +1060,17 @@ class ModemCore:
                 self._application_queue_rsp_handlers.append((start_pattern, handler))
         else:
             log('WARNING', 'Invalid parameters, not registering application queue rsp handler')
+    
+    def _unregister_application_queue_rsp_handler(self, handler: callable):
+        if callable(handler):
+            if self._application_queue_rsp_handlers_set:
+                for i in range(len(self._application_queue_rsp_handlers) - 1, -1, -1):
+                    if self._application_queue_rsp_handlers[i][1] is handler:
+                        self._application_queue_rsp_handlers.pop(i)
+                if not self._application_queue_rsp_handlers:
+                    self._application_queue_rsp_handlers_set = False
+        else:
+            log('WARNING', f'Invalid paramater, cannot unregister: {type(handler)}, must be a callable')
 
     async def _run_cmd(self,
         at_cmd: str,
@@ -1164,7 +1161,7 @@ class ModemCore:
                 raise RuntimeError('Failed to reset modem')
             if not await self.config_cme_error_reports(WalterModemCMEErrorReportsType.NUMERIC):
                 raise RuntimeError('Failed to configure CME error reports')
-            if not await self.config_cereg_reports(WalterModemCEREGReportsType.ENABLED):
+            if not await self.config_cereg_reports(WalterModemCEREGReportsType.ENABLED_UE_PSM_WITH_LOCATION_EMM_CAUSE):
                 raise RuntimeError('Failed to configure cereg reports')
             
             self._begun = True

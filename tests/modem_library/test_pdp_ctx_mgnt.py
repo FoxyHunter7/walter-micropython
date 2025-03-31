@@ -58,7 +58,7 @@ class TestModemPDPContextManagementPreConnection(unittest.AsyncTestCase):
         if not await modem.create_PDP_context(
             context_id=PDP_CTX_ID,
             apn=APN,
-            type=WalterModemPDPType.IP,
+            pdp_type=WalterModemPDPType.IP,
             ipv4_alloc_method=WalterModemPDPIPv4AddrAllocMethod.DHCP,
             request_type=WalterModemPDPRequestType.NEW_OR_HANDOVER,
             pcscf_method=WalterModemPDPPCSCFDiscoveryMethod.NAS,
@@ -93,7 +93,7 @@ class TestModemPDPContextManagementPreConnection(unittest.AsyncTestCase):
 
     async def test_set_PDP_context_auth_params_context_runs(self):
         self.assert_true(
-            await modem.set_PDP_context_auth_params(
+            await modem.set_PDP_auth_params(
                 context_id=PDP_CTX_ID,
                 protocol=AUTH_PROTO,
                 user_id=AUTH_USER,
@@ -121,14 +121,14 @@ class TestModemPDPContextManagementPostConnection(unittest.AsyncTestCase):
     
     async def test_set_PDP_context_state_runs(self):
         self.assert_true(
-            await modem.set_PDP_context_state(
+            await modem.set_PDP_context_active(
                 active=True,
                 context_id=PDP_CTX_ID,
             )
         )
     
     async def test_set_PDP_context_state_sets_state_in_modem(self):
-        await modem.set_PDP_context_state(active=True, context_id=PDP_CTX_ID)
+        await modem.set_PDP_context_active(active=True, context_id=PDP_CTX_ID)
         
         pdp_state_from_modem = None
 
@@ -157,7 +157,7 @@ class TestModemPDPContextManagementPostConnection(unittest.AsyncTestCase):
         self.assert_is_instance(modem_rsp.pdp_address_list, list)
     
     async def test_attach_PDP_context_runs(self):
-        self.assert_true(await modem.attach_PDP_context(attach=True))
+        self.assert_true(await modem.set_network_attachment_state(attach=True))
 
 
 test_modem_pdp_context_management_pre_connection = TestModemPDPContextManagementPreConnection()
