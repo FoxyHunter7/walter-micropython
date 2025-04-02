@@ -5,9 +5,8 @@ from machine import UART
 from .queue import Queue
 
 from .enums import (
-    WalterModemNetworkRegState,
-    WalterModemNetworkSelMode,
     WalterModemOpState,
+    WalterModemNetworkRegState,
     WalterModemRspParserState,
     WalterModemCmdState,
     WalterModemState,
@@ -20,7 +19,8 @@ from .enums import (
     WalterModemSocketState,
     WalterModemCMEErrorReportsType,
     WalterModemCEREGReportsType,
-    WalterModemMqttState
+    WalterModemMqttState,
+    WalterModemMqttResultCode
 )
 
 from .structs import (
@@ -526,23 +526,48 @@ class ModemCore:
         _, result_code_str = at_rsp[len("+SQNSMQTTONCONNECT:"):].decode().split(',')
         result_code = int(result_code_str)
 
-        if self._mqtt_status == WalterModemMqttState.CONNECTED:
-            for (topic, qos) in self._mqtt_subscriptions:
-                asyncio.create_task(self._run_cmd(
-                    at_cmd=f'AT+SQNSMQTTSUBSCRIBE=0,{modem_string(topic)},{qos}',
-                    at_rsp=b'+SQNSMQTTONSUBSCRIBE:0,{}'.format(modem_string(topic)),
-                ))
+        if cmd and cmd.at_cmd:
+            cmd.rsp.type = WalterModemRspType.MQTT
+            cmd.rsp.mqtt_rc = result_code
 
         if result_code:
             self._mqtt_status = WalterModemMqttState.DISCONNECTED
         else:
             self._mqtt_status = WalterModemMqttState.CONNECTED
 
+        if self._mqtt_status == WalterModemMqttState.CONNECTED:
+            for (topic, qos) in self._mqtt_subscriptions:
+                asyncio.create_task(self._run_cmd(
+                    at_cmd=f'AT+SQNSMQTTSUBSCRIBE=0,{modem_string(topic)},{qos}',
+                    at_rsp=b'+SQNSMQTTONSUBSCRIBE:0,{}'.format(modem_string(topic)),
+                ))
+        
+        if cmd and cmd.at_cmd and cmd.at_cmd.startswith('AT+SQNSMQTTCONNECT=0'):
+            if result_code != WalterModemMqttResultCode.SUCCESS:
+                return WalterModemState.ERROR
+        
         return WalterModemState.OK
+    
+    async def _handle_sqns_mqtt_on_publish(self, tx_stream, cmd, at_rsp):
+        result_code = int(at_rsp[-2:].strip(b','))
+
+        if cmd and cmd.at_cmd:
+            cmd.rsp.type = WalterModemRspType.MQTT
+            cmd.rsp.mqtt_rc = result_code
+
+        if cmd and cmd.at_cmd and cmd.at_cmd.startswith('AT+SQNSMQTTPUBLISH=0'):
+            if result_code != WalterModemMqttResultCode.SUCCESS:
+                return WalterModemState.ERROR
+        
+        return WalterModemState.OK        
 
     async def _handle_sqns_mqtt_on_disconnect(self, tx_stream, cmd, at_rsp):
         _, result_code_str = at_rsp[len("+SQNSMQTTONDISCONNECT:"):].decode().split(',')
         result_code = int(result_code_str)
+
+        if cmd and cmd.at_cmd:
+            cmd.rsp.type = WalterModemRspType.MQTT
+            cmd.rsp.mqtt_rc = result_code
 
         if result_code != 0:
             return WalterModemState.ERROR
@@ -551,6 +576,10 @@ class ModemCore:
         self._mqtt_subscriptions = []
         for msg in self._mqtt_msg_buffer:
             msg.free = True
+        
+        if cmd and cmd.at_cmd and cmd.at_cmd.startswith('AT+SQNSMQTTDISCONNECT=0'):
+            if result_code != WalterModemMqttResultCode.SUCCESS:
+                return WalterModemState.ERROR
 
         return WalterModemState.OK
 
@@ -575,6 +604,19 @@ class ModemCore:
             msg.free = True
 
         return WalterModemState.OK
+    
+    async def _handle_sqns_mqtt_subscribe(self, tx_stream, cmd, at_rsp):
+        result_code = int(at_rsp[-2:].strip(b','))
+
+        if cmd and cmd.at_cmd:
+            cmd.rsp.type = WalterModemRspType.MQTT
+            cmd.rsp.mqtt_rc = result_code
+
+        if cmd and cmd.at_cmd and cmd.at_cmd.startswith('AT+SQNSMQTTSUBSCRIBE=0'):
+            if result_code != WalterModemMqttResultCode.SUCCESS:
+                return WalterModemState.ERROR
+        
+        return WalterModemState.OK    
 
     async def _handle_sqn_sh(self, tx_stream, cmd, at_rsp):
         socket_id = int(at_rsp[len('+SQNSH: '):].decode())
@@ -956,9 +998,11 @@ class ModemCore:
                 (b'+SQNHTTPSH: ', self._handle_sqn_http_sh),
                 # - MQTT
                 (b'+SQNSMQTTONCONNECT:0,', self._handle_sqns_mqtt_on_connect),
+                (b'+SQNSMQTTONPUBLISH:0', self._handle_sqns_mqtt_on_publish),
                 (b'+SQNSMQTTONDISCONNECT:0,', self._handle_sqns_mqtt_on_disconnect),
                 (b'+SQNSMQTTONMESSAGE:0,', self._handle_sqns_mqtt_on_message),
                 (b'+SQNSMQTTMEMORYFULL', self._handle_sqns_mqtt_memory_full),
+                (b'+SQNSMQTTONSUBSCRIBE:0', self._handle_sqns_mqtt_subscribe),
                 # - Socket
                 (b'+SQNSH: ', self._handle_sqn_sh),
 
