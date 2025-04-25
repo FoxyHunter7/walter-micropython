@@ -62,11 +62,13 @@ class ModemCoap(ModemCore):
 
         if ctx_id < COAP_MIN_CTX_ID or COAP_MAX_CTX_ID < ctx_id:
             if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
         
         if timeout < COAP_MIN_TIMEOUT or COAP_MAX_TIMEOUT < timeout:
             log('WARNING', f'coap_context_create: invalid timeout: {timeout}s ',
             f'(min: {COAP_MIN_TIMEOUT}, max: {COAP_MAX_TIMEOUT})')
             if rsp: rsp.result = WalterModemState.ERROR
+            return False
         
         def complete_handler(result, rsp, complete_handler_arg):
             if result == WalterModemState.OK:
@@ -82,6 +84,6 @@ class ModemCoap(ModemCore):
                 f',,{secure_profile_id}' if secure_profile_id else ''
             ),
             at_rsp=(b'+SQNCOAPCONNECTED:', b'+SQNCOAP: ERROR'),
-            complete_handler=complete_handler
+            complete_handler=complete_handler,
             complete_handler_arg=ctx_id
         )
