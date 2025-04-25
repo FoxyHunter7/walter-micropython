@@ -15,5 +15,5 @@ of the modem library itself or should there be any issues with
 
 You can optionally pass the device name along,
 in that case that you have multiple devices connected.
-_(eg. `./util/install_walter_modem.sh ttyACM0` or
-`.\util\install_walter_modem.ps1 COM3`)_
+_(eg. `./util/install_walter_modem/install_walter_modem.sh ttyACM0` or
+`.\util\install_walter_modem\install_walter_modem.ps1 COM3`)_

@@ -24,5 +24,4 @@ This utility script uses
 
 You can optionally pass the device name along,
 in the case that you have multiple devices connected.
-*(eg. `./util/install_walter_modem.sh ttyACM0` or
-`.\util\install_walter_modem.ps1 COM3`)*
+*(eg. `./util/auto_reconnect/auto_reconnect.sh ttyACM0`)*

@@ -59,5 +59,3 @@ python util/modem_passthrough/modem_passthrough_gui.py --log
 ```shell
 python util/modem_passthrough/modem_passthrough_tui.py --log
 ```
-
-
