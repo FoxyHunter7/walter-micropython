@@ -1,5 +1,4 @@
 import asyncio
-import time
 
 from machine import ( # type: ignore
     UART,
@@ -30,6 +29,7 @@ class Modem(
     mixins.ModemSocket,
     mixins.ModemMQTT,
     mixins.ModemHTTP,
+    mixins.ModemCoap,
     mixins.ModemSleep
 ):
     def __init__(self):

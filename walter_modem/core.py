@@ -446,6 +446,9 @@ class ModemCore:
         cmd.rsp.clock = parse_cclk_time(time_str)
 
         return WalterModemState.OK
+    
+    async def _handle_sqncoap_error(self, tx_stream, cmd, at_rsp):
+        return WalterModemState.ERROR
 
     async def _handle_sqn_http_rcv_answer_start(self, tx_stream, cmd, at_rsp):
         if self._http_current_profile >= ModemCore.MAX_HTTP_PROFILES or self._http_context_list[self._http_current_profile].state != WalterModemHttpContextState.GOT_RING:
@@ -1002,6 +1005,8 @@ class ModemCore:
                 (b'+SQNMODEACTIVE: ', self._handle_sqn_mode_active),
 
                 # 8. IP Data Services
+                # - CoAP
+                (b'+SQNCOAP: ERROR', self._handle_sqncoap_error)
                 # - HTTP
                 (b'<<<', self._handle_sqn_http_rcv_answer_start),
                 (b'+SQNHTTPRING: ', self._handle_sqn_http_ring),

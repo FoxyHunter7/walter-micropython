@@ -17,7 +17,8 @@ from .enums import (
     WalterModemSocketProto,
     WalterModemSocketState,
     WalterModemState,
-    WalterModemMqttResultCode
+    WalterModemMqttResultCode,
+    WalterModemCoapDisconnectCause
 )
 
 
@@ -408,3 +409,17 @@ class ModemCellInformation:
 
         self.ce_level: int = 0
         """Coverage Enhancement Level"""
+    
+class ModemCoapContextState:
+    def __init__(self):
+        self.configured = lambda: self.connected
+        """
+        Whether or not the coap profile has been configured yet.
+        Note, the context configuration is lost on disconnect.
+        """
+
+        self.connected: bool = False
+        """Whether or not the coap profile is connected or listening."""
+
+        self.cause: None | WalterModemCoapDisconnectCause
+        """If connection lost/disconnected; the reason why"""
