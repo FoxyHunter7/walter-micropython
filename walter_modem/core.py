@@ -1069,7 +1069,8 @@ class ModemCore:
             cmd is None or
             cmd.at_rsp is None or
             cmd.type == WalterModemCmdType.TX or
-            cmd.at_rsp != at_rsp[:len(cmd.at_rsp)]
+            (isinstance(cmd.at_rsp, str) and cmd.at_rsp != at_rsp[:len(cmd.at_rsp)]) or
+            (isinstance(cmd.at_rsp, tuple) and at_rsp[:len(cmd.at_rsp)] in cmd.at_rsp)
         ):
             return
 
@@ -1110,7 +1111,7 @@ class ModemCore:
 
     async def _run_cmd(self,
         at_cmd: str,
-        at_rsp: str, 
+        at_rsp: str | tuple[str], 
         rsp: ModemRsp | None = None,
         ring_return: list | None = None,
         cmd_type: int = WalterModemCmdType.TX_WAIT,
@@ -1132,7 +1133,9 @@ class ModemCore:
         :param at_cmd: NULL terminated array of command elements. The elements
         must stay available until the command is complete. The array is only
         shallow copied.
-        :param at_rsp: The expected AT response.
+        :param at_rsp: The expected AT response(s), when providing a tuple of multiple responses,
+        they are to be seen as "OR", when either one of the responses are received,
+        the cmd will be seen as complete.
         :param data: The extra data to be sent to the modem
         :param complete_handler: Optional complete handler function.
         :param complete_handler_arg: Optional argument for the complete handler.
