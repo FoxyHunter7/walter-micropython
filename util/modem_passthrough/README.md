@@ -9,41 +9,15 @@ to the Walter Modem directly and see the output of the modem.
 
 ## How to use
 
-There are two versions available:
-
-- **TUI (Terminal User Interface)**
-- **GUI (Graphical User Interface)**
-
 > [!WARNING]
 > The program does not auto-detect when you connect a device, your Walter must
 > be connected when launching the program.
 > On a disconnect, simply restart the program.
 
-### Windows
-
-The **GUI** version (`modem_passthrough_gui.py`) is recommended for Windows.
-
-> [!NOTE]
-> Curses, the library used for the TUI, is not available by default on Windows.\
-> You can install it using the following command: `pip install windows-curses`
-
-### Linux
-
-Both the **TUI** and **GUI** work out of the box
-*(granted you have python3 & mpremote installed on your system)*.
-
-### Running the Scripts
-
-Simply run one of the 2 modem_passthrough python scripts:
+Simply run the modem_passthrough python:
 
 ```shell
-python util/modem_passthrough/modem_passthrough.py  # For GUI
-```
-
-or
-
-```shell
-python util/modem_passthrough/modem_passthrough_tui.py  # For TUI
+python util/modem_passthrough/modem_passthrough.py
 ```
 
 ### Optional File Logging
@@ -53,9 +27,5 @@ and results to a log file.
 This file will be placed in `log` next to the script's location.
 
 ```shell
-python util/modem_passthrough/modem_passthrough_gui.py --log
-```
-
-```shell
-python util/modem_passthrough/modem_passthrough_tui.py --log
+python util/modem_passthrough/modem_passthrough.py --log
 ```
