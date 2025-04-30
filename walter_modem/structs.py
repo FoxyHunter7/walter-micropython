@@ -416,12 +416,6 @@ class ModemCellInformation:
     
 class ModemCoapContextState:
     def __init__(self):
-        self.configured = lambda: self.connected
-        """
-        Whether or not the coap profile has been configured yet.
-        Note, the context configuration is lost on disconnect.
-        """
-
         self.connected: bool = False
         """Whether or not the coap profile is connected or listening."""
 
@@ -430,6 +424,14 @@ class ModemCoapContextState:
 
         self.rings: list[ModemCoapRing] = []
         """List of coap rings, errornous rings are ignored, but printed in warn log."""
+
+    @property
+    def configured(self):
+        """
+        Whether or not the coap profile has been configured yet.
+        Note, the context configuration is lost on disconnect.
+        """
+        return self.connected
 
 class ModemCoapRing:
     def __init__(self, ctx_id, msg_id, token, req_resp, m_type, method, rsp_code, length):
