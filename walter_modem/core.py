@@ -20,7 +20,8 @@ from .enums import (
     WalterModemHttpContextState,
     WalterModemSocketState,
     WalterModemMqttState,
-    WalterModemMqttResultCode
+    WalterModemMqttResultCode,
+    WalterModemCoapReqResp
 )
 
 from .structs import (
@@ -36,7 +37,8 @@ from .structs import (
     ModemGNSSAssistance,
     ModemCmd,
     ModemRsp,
-    ModemMqttMessage
+    ModemMqttMessage,
+    ModemCoapRing
 )
 
 from .utils import (
@@ -156,7 +158,7 @@ class ModemCore:
         self._proc_queue_rsp_cmd_handlers = None
         """The mapping of cmd patterns to handler methods for processing the rsp queue"""
 
-        self._application_queue_rsp_handlers: tuple = None
+        self._application_queue_rsp_handlers: list[tuple] = None
         """The mapping of rsp patterns to handler methods defined by the application code"""
 
         self._application_queue_rsp_handlers_set: bool = False
@@ -446,9 +448,32 @@ class ModemCore:
         cmd.rsp.clock = parse_cclk_time(time_str)
 
         return WalterModemState.OK
-    
-    async def _handle_sqncoap_error(self, tx_stream, cmd, at_rsp):
+
+    async def _handle_sqn_coap_closed(self, tx_stream, cmd, at_rsp):
+        ctx_id, reason = at_rsp.split(b': ')[1].split(b',')
+        ctx_id = int(ctx_id)
+        reason = str(reason.strip(b'"'))
+
+        self.coap_context_states[ctx_id].connected = False
+        self.coap_context_states[ctx_id].reason = reason
+
+    async def _handle_sqn_coap_error(self, tx_stream, cmd, at_rsp):
         return WalterModemState.ERROR
+
+    async def _handle_sqn_coap_ring_err(self, tx_stream, cmd, at_rsp):
+        log('WARNING', str(at_rsp.split(b': ')[1].replace(b',', b', ')))
+    
+    async def _handle_sqn_coap_ring(self, tx_stream, cmd, at_rsp):
+        ctx_id, msg_id, req_resp, m_type, method_or_rsp_code, length = at_rsp.split(b': ')[1].split(b',')
+        self.coap_context_states[int(ctx_id)].rings.append(ModemCoapRing(
+            ctx_id=int(ctx_id),
+            msg_id=int(msg_id),
+            req_resp=int(req_resp),
+            m_type=int(m_type),
+            method=int(method_or_rsp_code) if req_resp == WalterModemCoapReqResp.REQUEST else None,
+            rsp_code=int(method_or_rsp_code) if req_resp == WalterModemCoapReqResp.RESPONSE else None,
+            length=int(length)
+        ))
 
     async def _handle_sqn_http_rcv_answer_start(self, tx_stream, cmd, at_rsp):
         if self._http_current_profile >= ModemCore.MAX_HTTP_PROFILES or self._http_context_list[self._http_current_profile].state != WalterModemHttpContextState.GOT_RING:
@@ -1006,7 +1031,10 @@ class ModemCore:
 
                 # 8. IP Data Services
                 # - CoAP
-                (b'+SQNCOAP: ERROR', self._handle_sqncoap_error)
+                (b'+SQNCOAPCLOSED: ', self._handle_sqn_coap_closed),
+                (b'+SQNCOAP: ERROR', self._handle_sqn_coap_error),
+                (b'+SQNCOAPRINGERR: ', self._handle_sqn_coap_ring_err)
+                (b'+SQNCOAPRING:', self._handle_sqn_coap_ring),
                 # - HTTP
                 (b'<<<', self._handle_sqn_http_rcv_answer_start),
                 (b'+SQNHTTPRING: ', self._handle_sqn_http_ring),
