@@ -38,7 +38,8 @@ from .structs import (
     ModemCmd,
     ModemRsp,
     ModemMqttMessage,
-    ModemCoapRing
+    ModemCoapRing,
+    ModemCoapContextState
 )
 
 from .utils import (
@@ -119,6 +120,18 @@ class ModemCore:
     MQTT_MAX_MESSAGE_LEN = 4096
     """The maximum MQTT payload length"""
 
+    COAP_MIN_CTX_ID = 0
+
+    COAP_MAX_CTX_ID = 2
+
+    COAP_MIN_TIMEOUT = 1
+
+    COAP_MAX_TIMEOUT = 120
+
+    COAP_MIN_BYTES_LENGTH = 0
+
+    COAP_MAX_BYTES_LENGTH = 1024
+
     def __init__(self):
         gpio_deep_sleep_hold(True)
 
@@ -166,6 +179,12 @@ class ModemCore:
 
         self._begun = False
         """Whether or not the begin method has already been run."""
+
+        self.coap_context_states = tuple(
+            ModemCoapContextState()
+            for _ in range(self.COAP_MIN_CTX_ID, self.COAP_MAX_CTX_ID + 1)
+        )
+        """Index maps to the profile ID"""
 
     def _add_msg_to_mqtt_buffer(self, msg_id, topic, length, qos):
         # According to modem documentation;
@@ -457,6 +476,8 @@ class ModemCore:
         self.coap_context_states[ctx_id].connected = False
         self.coap_context_states[ctx_id].reason = reason
 
+        return WalterModemState.OK
+
     async def _handle_sqn_coap_error(self, tx_stream, cmd, at_rsp):
         return WalterModemState.ERROR
 
@@ -474,6 +495,8 @@ class ModemCore:
             rsp_code=int(method_or_rsp_code) if req_resp == WalterModemCoapReqResp.RESPONSE else None,
             length=int(length)
         ))
+
+        return WalterModemState.OK
 
     async def _handle_sqn_http_rcv_answer_start(self, tx_stream, cmd, at_rsp):
         if self._http_current_profile >= ModemCore.MAX_HTTP_PROFILES or self._http_context_list[self._http_current_profile].state != WalterModemHttpContextState.GOT_RING:
@@ -1033,7 +1056,7 @@ class ModemCore:
                 # - CoAP
                 (b'+SQNCOAPCLOSED: ', self._handle_sqn_coap_closed),
                 (b'+SQNCOAP: ERROR', self._handle_sqn_coap_error),
-                (b'+SQNCOAPRINGERR: ', self._handle_sqn_coap_ring_err)
+                (b'+SQNCOAPRINGERR: ', self._handle_sqn_coap_ring_err),
                 (b'+SQNCOAPRING:', self._handle_sqn_coap_ring),
                 # - HTTP
                 (b'<<<', self._handle_sqn_http_rcv_answer_start),
@@ -1103,7 +1126,9 @@ class ModemCore:
             cmd.at_rsp is None or
             cmd.type == WalterModemCmdType.TX or
             (isinstance(cmd.at_rsp, str) and cmd.at_rsp != at_rsp[:len(cmd.at_rsp)]) or
-            (isinstance(cmd.at_rsp, tuple) and at_rsp[:len(cmd.at_rsp)] in cmd.at_rsp)
+            (isinstance(cmd.at_rsp, tuple) and not any(
+                at_rsp.startswith(rsp) for rsp in cmd.at_rsp)
+            )
         ):
             return
 
