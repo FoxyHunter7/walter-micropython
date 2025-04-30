@@ -1119,7 +1119,18 @@ class ModemCore:
                 if at_rsp.startswith(pattern):
                     handler(cmd, at_rsp)
                     break
-
+# FOR DEBUGGING:        
+#        if cmd is not None and cmd.at_rsp is not None:
+#            print('=====')
+#            print('Full response:', at_rsp)
+#            if isinstance(cmd.at_rsp, str):
+#                print('Expected prefix (str):', cmd.at_rsp)
+#                print('Response start:', at_rsp[:len(cmd.at_rsp)])
+#                print('Mismatch:', cmd.at_rsp != at_rsp[:len(cmd.at_rsp)])
+#            elif isinstance(cmd.at_rsp, tuple):
+#                print('Expected prefixes (tuple):', cmd.at_rsp)
+#                for rsp in cmd.at_rsp:
+#                    print(f'Checking prefix "{rsp}":', at_rsp.startswith(rsp))
         if (
             result is None or
             cmd is None or
