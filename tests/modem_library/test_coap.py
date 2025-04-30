@@ -128,27 +128,27 @@ class TestCoapContextClose(
     WalterModemAsserts,
     NetworkConnectivity
 ):
-    def __init__(self):
-        modem = modem
-        super().__init__()
+    async def async_setup(self):
+        await modem.begin() # Modem begin is ephermal
+        await self.ensure_network_connection(modem_instance=modem)
 
 class TestCoapSend(
     AsyncTestCase,
     WalterModemAsserts,
     NetworkConnectivity
 ):
-    def __init__(self):
-        modem = modem
-        super().__init__()
+    async def async_setup(self):
+        await modem.begin() # Modem begin is ephermal
+        await self.ensure_network_connection(modem_instance=modem)
 
 class TestCoapReceiveData(
     AsyncTestCase,
     WalterModemAsserts,
     NetworkConnectivity
 ):
-    def __init__(self):
-        modem = modem
-        super().__init__()
+    async def async_setup(self):
+        await modem.begin() # Modem begin is ephermal
+        await self.ensure_network_connection(modem_instance=modem)
 
 testcases = [testcase() for testcase in (
     TestCoapContextCreate,
