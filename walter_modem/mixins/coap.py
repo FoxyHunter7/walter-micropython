@@ -1,5 +1,3 @@
-from micropython import const # type: ignore
-
 from ..core import ModemCore
 from ..enums import (
     WalterModemState,
@@ -8,7 +6,6 @@ from ..enums import (
 )
 from ..structs import (
     ModemRsp,
-    ModemCoapContextState,
     WalterModemCoapMethod
 )
 from ..utils import (
@@ -17,23 +14,7 @@ from ..utils import (
     log
 )
 
-COAP_MIN_CTX_ID = const(0)
-COAP_MAX_CTX_ID = const(2)
-COAP_MIN_TIMEOUT = const(1)
-COAP_MAX_TIMEOUT = const(120)
-COAP_MIN_BYTES_LENGTH = const(0)
-COAP_MAX_BYTES_LENGTH = const(1024)
-
 class ModemCoap(ModemCore):
-    def __init__(self):
-        self.coap_context_states = tuple(
-            ModemCoapContextState()
-            for _ in range(COAP_MIN_CTX_ID, COAP_MAX_CTX_ID + 1)
-        )
-        """Index maps to the profile ID"""
-
-        super().__init__()
-
     async def coap_context_create(self,
         ctx_id: int = 0,
         server_address: str = None,
@@ -66,18 +47,18 @@ class ModemCoap(ModemCore):
         :return bool: True on success, False on failure
         """
 
-        if ctx_id < COAP_MIN_CTX_ID or COAP_MAX_CTX_ID < ctx_id:
+        if ctx_id < ModemCore.COAP_MIN_CTX_ID or ModemCore.COAP_MAX_CTX_ID < ctx_id:
             if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
             return False
 
-        if timeout < COAP_MIN_TIMEOUT or COAP_MAX_TIMEOUT < timeout:
-            log('WARNING', f'coap_context_create: invalid timeout: {timeout}s ',
-            f'(min: {COAP_MIN_TIMEOUT}, max: {COAP_MAX_TIMEOUT})')
+        if timeout < ModemCore.COAP_MIN_TIMEOUT or ModemCore.COAP_MAX_TIMEOUT < timeout:
             if rsp: rsp.result = WalterModemState.ERROR
             return False
 
-        def complete_handler(result, rsp, complete_handler_arg):
+        async def complete_handler(result, rsp, complete_handler_arg):
             if result == WalterModemState.OK:
+                print('setting state connected to true')
+                print('because: ' + WalterModemState.get_value_name(result))
                 self.coap_context_states[complete_handler_arg].connected = True
 
         return await self._run_cmd(
@@ -85,8 +66,10 @@ class ModemCoap(ModemCore):
             at_cmd='AT+SQNCOAPCREATE={},{},{},{},{},{}{}'.format(
                 ctx_id,
                 modem_string(server_address) if server_address else '',
-                server_port, local_port,
-                modem_bool(dtls), timeout,
+                server_port if server_port else '',
+                local_port if local_port else '',
+                modem_bool(dtls),
+                timeout,
                 f',,{secure_profile_id}' if secure_profile_id else ''
             ),
             at_rsp=(b'+SQNCOAPCONNECTED:', b'+SQNCOAP: ERROR'),
@@ -107,7 +90,7 @@ class ModemCoap(ModemCore):
         :return bool: True on success, False on failure
         """
 
-        if ctx_id < COAP_MIN_CTX_ID or COAP_MAX_CTX_ID < ctx_id:
+        if ctx_id < ModemCore.COAP_MIN_CTX_ID or ModemCore.COAP_MAX_CTX_ID < ctx_id:
             if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
             return False
 
@@ -138,11 +121,11 @@ class ModemCoap(ModemCore):
         :return bool: True on success, False on failure
         """
 
-        if ctx_id < COAP_MIN_CTX_ID or COAP_MAX_CTX_ID < ctx_id:
+        if ctx_id < ModemCore.COAP_MIN_CTX_ID or ModemCore.COAP_MAX_CTX_ID < ctx_id:
             if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
             return False
         
-        if length < COAP_MIN_BYTES_LENGTH or COAP_MAX_BYTES_LENGTH < length:
+        if length < ModemCore.COAP_MIN_BYTES_LENGTH or ModemCore.COAP_MAX_BYTES_LENGTH < length:
             if rsp: rsp.result = WalterModemState.ERROR
             return False
         
@@ -170,11 +153,11 @@ class ModemCoap(ModemCore):
         :return bool: True on success, False on failure
         """
 
-        if ctx_id < COAP_MIN_CTX_ID or COAP_MAX_CTX_ID < ctx_id:
+        if ctx_id < ModemCore.COAP_MIN_CTX_ID or ModemCore.COAP_MAX_CTX_ID < ctx_id:
             if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
             return False
 
-        if max_bytes < COAP_MIN_BYTES_LENGTH or COAP_MAX_BYTES_LENGTH < max_bytes:
+        if max_bytes < ModemCore.COAP_MIN_BYTES_LENGTH or ModemCore.COAP_MAX_BYTES_LENGTH < max_bytes:
             if rsp: rsp.result = WalterModemState.ERROR
             return False
         
