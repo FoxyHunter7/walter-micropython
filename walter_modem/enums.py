@@ -431,3 +431,43 @@ class WalterModemCoapDisconnectCause(Enum):
     SERVER = 1
     NAT_TIMEOUT = 2
     NETWORK = 3
+
+class WalterModemCoapReqResp(Enum):
+    """Indicator whether a ring is a request from or response from a CoAP seever."""
+    REQUEST = 0
+    RESPONSE = 1
+
+class WalterModemCoapType(Enum):
+    CON = 0
+    NON = 1
+    ACK = 2
+    RST = 3
+
+class WalterModemCoapMethod(Enum):
+    GET = 1
+    POST = 2
+    PUT = 3
+    DELETE = 4
+
+class WalterModemCoapResponseCode(Enum):
+    CREATED = 201
+    DELETED = 202
+    VALID = 203
+    CHANGED = 204
+    CONTENT = 205
+    BAD_REQUEST = 400
+    UNAUTHORIZED = 401
+    BAD_OPTION = 402
+    FORBIDDEN = 403
+    NOT_FOUND = 404
+    METHOD_NOT_ALLOWED = 405
+    NOT_ACCEPTABLE = 406
+    PRECONDITION_FAILED = 412
+    REQUEST_ENTITY_TOO_LARGE = 413
+    UNSUPPORTED_MEDIA_TYPE = 415
+    INERNAL_SERVER_ERROR = 500
+    NOT_IMPLIMENTED = 501
+    BAD_GATEWAY = 502
+    SERVICE_UNAVAILABLE = 503
+    GATEWAY_TIMEOUT = 501
+    PROXYING_NOT_SUPPORTED = 505
