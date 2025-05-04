@@ -291,7 +291,7 @@ class WalterModemAsserts:
                 nonlocal sent_cmd
                 nonlocal error
 
-                sent_cmd = cmd.at_cmd
+                if cmd is not None: sent_cmd = cmd.at_cmd
                 if b'ERROR' in at_rsp: error = True
 
             modem_instance.register_application_queue_rsp_handler(at_rsp_pattern, cmd_handler)
