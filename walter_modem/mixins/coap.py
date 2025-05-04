@@ -57,8 +57,6 @@ class ModemCoap(ModemCore):
 
         async def complete_handler(result, rsp, complete_handler_arg):
             if result == WalterModemState.OK:
-                print('setting state connected to true')
-                print('because: ' + WalterModemState.get_value_name(result))
                 self.coap_context_states[complete_handler_arg].connected = True
 
         return await self._run_cmd(
