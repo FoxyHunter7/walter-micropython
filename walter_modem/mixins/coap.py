@@ -102,8 +102,8 @@ class ModemCoap(ModemCore):
         ctx_id: int,
         m_type: WalterModemCoapType,
         method: WalterModemCoapMethod,
-        length: int,
-        data,
+        data: bytes | bytearray | str | None = None,
+        length: int = None,
         rsp: ModemRsp = None
     ) -> bool:
         """
@@ -114,7 +114,8 @@ class ModemCoap(ModemCore):
         :type m_type: WalterModemCoapType
         :param method: method (GET, POST, PUT, DELETE)
         :type method: WalterModemCoapMethod
-        :param length: Length of the payload
+        :param data: Binary data to send (bytes, bytearray) or string (will be UTF-8 encoded)
+        :param length: Length of the payload (optional, auto-calculated if not provided)
         :param rsp: Reference to a modem response instance
 
         :return bool: True on success, False on failure
@@ -123,6 +124,15 @@ class ModemCoap(ModemCore):
         if ctx_id < ModemCore.COAP_MIN_CTX_ID or ModemCore.COAP_MAX_CTX_ID < ctx_id:
             if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
             return False
+        
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        elif data is not None and not isinstance(data, (bytes, bytearray)):
+            if rsp: rsp.result = WalterModemState.ERROR
+            return False
+        
+        if length is None:
+            length = 0 if data is None else len(data)
         
         if length < ModemCore.COAP_MIN_BYTES_LENGTH or ModemCore.COAP_MAX_BYTES_LENGTH < length:
             if rsp: rsp.result = WalterModemState.ERROR
