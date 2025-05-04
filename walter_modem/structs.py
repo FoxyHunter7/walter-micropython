@@ -18,7 +18,7 @@ from .enums import (
     WalterModemSocketState,
     WalterModemState,
     WalterModemMqttResultCode,
-    WalterModemCoapDisconnectCause,
+    WalterModemCoapCloseCause,
     WalterModemCoapReqResp,
     WalterModemCoapType,
     WalterModemCoapMethod,
@@ -419,7 +419,7 @@ class ModemCoapContextState:
         self.connected: bool = False
         """Whether or not the coap profile is connected or listening."""
 
-        self.cause: None | WalterModemCoapDisconnectCause
+        self.cause: None | WalterModemCoapCloseCause
         """If connection lost/disconnected; the reason why"""
 
         self.rings: list[ModemCoapRing] = []
@@ -434,10 +434,9 @@ class ModemCoapContextState:
         return self.connected
 
 class ModemCoapRing:
-    def __init__(self, ctx_id, msg_id, token, req_resp, m_type, method, rsp_code, length):
+    def __init__(self, ctx_id, msg_id, req_resp, m_type, method, rsp_code, length):
         self.ctx_id: int = ctx_id
         self.msg_id: int = msg_id
-        self.token: bytes | None = token
         self.req_resp: WalterModemCoapReqResp = req_resp
         self.type: WalterModemCoapType = m_type
         self.method: WalterModemCoapMethod | None = method

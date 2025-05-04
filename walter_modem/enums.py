@@ -425,12 +425,12 @@ class WalterModemEDRXMODE(Enum):
     ENABLE_EDRX_AND_UNSOLICITED_RESULT_CODE = 2
     DISABLE_AND_DISCARD_ALL_PARAMS = 3
 
-class WalterModemCoapDisconnectCause(Enum):
+class WalterModemCoapCloseCause(Enum):
     """Reason why connection has been closed."""
-    USER = 0
-    SERVER = 1
-    NAT_TIMEOUT = 2
-    NETWORK = 3
+    USER = b'USER'
+    SERVER = b'SERVER'
+    NAT_TIMEOUT = b'NAT_TIMEOUT'
+    NETWORK = b'NETWORK'
 
 class WalterModemCoapReqResp(Enum):
     """Indicator whether a ring is a request from or response from a CoAP seever."""
