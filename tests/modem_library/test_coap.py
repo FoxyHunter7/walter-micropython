@@ -54,7 +54,6 @@ class TestCoapContextCreate(
     # AT command format
 
     async def test_sends_expected_at_cmd(self):
-        modem.debug_log = True
         await self.assert_sends_at_command(
             modem,
             'AT+SQNCOAPCREATE=0,"test",5683,5683,0,60',
