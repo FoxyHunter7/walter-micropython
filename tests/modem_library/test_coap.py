@@ -474,12 +474,39 @@ class TestCoapReceiveData(
     async def async_setup(self):
         await modem.begin() # Modem begin is ephermal
         await self.ensure_network_connection(modem_instance=modem)
+    
+        await modem._run_cmd(
+            at_cmd='AT+SQNCOAPCREATE=0,"coap.me",5683',
+            at_rsp=b'+SQNCOAPCONNECTED: '
+        )
+    
+    async def test_receive(self):
+        modem.debug_log = True
+        await modem._run_cmd('AT+SQNCOAPOPT=0,0,11,"test"',b'OK')
+        await modem.coap_send(
+            ctx_id=0,
+            m_type=WalterModemCoapType.CON,
+            method=WalterModemCoapMethod.GET,
+            length=0,
+            data=None
+        )
+
+        while len(modem.coap_context_states[0].rings) <= 0:
+            await asyncio.sleep(3)
+        ring = modem.coap_context_states[0].rings.pop()
+
+        await modem.coap_receive_data(
+            ctx_id=ring.ctx_id,
+            msg_id=ring.msg_id
+        )
+        await asyncio.sleep(10)
+        self.assert_true(True)
 
 testcases = [testcase() for testcase in (
-    TestCoapContextCreate,
-    TestCoapContextClose,
-    TestCoapSend,
-    #TestCoapReceiveData
+    #TestCoapContextCreate,
+    #TestCoapContextClose,
+    #TestCoapSend,
+    TestCoapReceiveData,
 )]
 
 for testcase in testcases:

@@ -500,6 +500,12 @@ class ModemCore:
 
         return WalterModemState.OK
 
+    async def _handle_sqn_coap_rcv(self, tx_stream, cmd, at_rsp):
+        print('hello hello')
+        print(at_rsp)
+        print(cmd)
+        print(tx_stream)
+
     async def _handle_sqn_http_rcv_answer_start(self, tx_stream, cmd, at_rsp):
         if self._http_current_profile >= ModemCore.MAX_HTTP_PROFILES or self._http_context_list[self._http_current_profile].state != WalterModemHttpContextState.GOT_RING:
             return WalterModemState.ERROR
@@ -1060,6 +1066,7 @@ class ModemCore:
                 (b'+SQNCOAP: ERROR', self._handle_sqn_coap_error),
                 (b'+SQNCOAPRINGERR: ', self._handle_sqn_coap_ring_err),
                 (b'+SQNCOAPRING:', self._handle_sqn_coap_ring),
+                (b'+SQNCOAPRCV: ', self._handle_sqn_coap_rcv),
                 # - HTTP
                 (b'<<<', self._handle_sqn_http_rcv_answer_start),
                 (b'+SQNHTTPRING: ', self._handle_sqn_http_ring),

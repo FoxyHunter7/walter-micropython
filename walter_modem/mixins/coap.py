@@ -174,7 +174,8 @@ class ModemCoap(ModemCore):
         return await self._run_cmd(
             rsp=rsp,
             at_cmd=f'AT+SQNCOAPRCV={ctx_id},{msg_id},{max_bytes}',
-            at_rsp=b'OK'
+            at_rsp=b'OK',
+            cmd_type=WalterModemCmdType.TX_WAIT
         )
         
 
