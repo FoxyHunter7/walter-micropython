@@ -103,6 +103,7 @@ class ModemCoap(ModemCore):
         m_type: WalterModemCoapType,
         method: WalterModemCoapMethod,
         length: int,
+        data,
         rsp: ModemRsp = None
     ) -> bool:
         """
@@ -131,6 +132,7 @@ class ModemCoap(ModemCore):
             rsp=rsp,
             at_cmd=f'AT+SQNCOAPSEND={ctx_id},{m_type},{method},{length}',
             at_rsp=b'OK',
+            data=data,
             cmd_type=WalterModemCmdType.DATA_TX_WAIT
         )
     
