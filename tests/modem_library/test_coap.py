@@ -498,7 +498,8 @@ class TestCoapReceiveData(
         await modem.coap_receive_data(
             ctx_id=ring.ctx_id,
             msg_id=ring.msg_id,
-            length=ring.length
+            length=ring.length,
+            max_bytes=5
         )
         await asyncio.sleep(10)
         self.assert_true(True)

@@ -173,12 +173,12 @@ class ModemCoap(ModemCore):
             if rsp: rsp.result = WalterModemState.ERROR
             return False
         
-        self._parser_data.raw_chunk_size = length
+        self._parser_data.raw_chunk_size = min(length, max_bytes)
         
         return await self._run_cmd(
             rsp=rsp,
             at_cmd=f'AT+SQNCOAPRCV={ctx_id},{msg_id},{max_bytes}',
-            at_rsp=b'OK'
+            at_rsp=b'+SQNCOAPRCV',
         )
         
 

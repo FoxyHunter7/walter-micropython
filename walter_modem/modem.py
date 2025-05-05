@@ -35,7 +35,9 @@ class Modem(
     def __init__(self):
         ModemCore.__init__(self)
 
-    async def begin(self, debug_log: bool = False):
+    async def begin(self,
+        debug_log: bool = False
+    ):
         if not self._begun:
             self.debug_log = debug_log
             self._uart = UART(2,
