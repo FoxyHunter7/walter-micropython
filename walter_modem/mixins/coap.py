@@ -2,7 +2,8 @@ from ..core import ModemCore
 from ..enums import (
     WalterModemState,
     WalterModemCmdType,
-    WalterModemCoapType
+    WalterModemCoapType,
+    WalterModemRspParserState
 )
 from ..structs import (
     ModemRsp,
@@ -149,6 +150,7 @@ class ModemCoap(ModemCore):
     async def coap_receive_data(self,
         ctx_id: int,
         msg_id: int,
+        length: int,
         max_bytes = 1024,
         rsp: ModemRsp = None
     ) -> bool:
@@ -171,11 +173,12 @@ class ModemCoap(ModemCore):
             if rsp: rsp.result = WalterModemState.ERROR
             return False
         
+        self._parser_data.raw_chunk_size = length
+        
         return await self._run_cmd(
             rsp=rsp,
             at_cmd=f'AT+SQNCOAPRCV={ctx_id},{msg_id},{max_bytes}',
-            at_rsp=b'OK',
-            cmd_type=WalterModemCmdType.TX_WAIT
+            at_rsp=b'OK'
         )
         
 

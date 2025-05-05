@@ -159,8 +159,9 @@ class WalterModemRspParserState(Enum):
     DATA_PROMPT_HTTP = 4
     DATA_HTTP_START1 = 5
     DATA_HTTP_START2 = 6
-    END_LF = 7
-    RAW = 8
+    COAP_RCV = 7
+    END_LF = 8
+    RAW = 9
 
 
 class WalterModemCmdType(Enum):

@@ -264,31 +264,42 @@ class ModemCore:
 
             for b in incoming_uart_data[:size]:
                 if self._parser_data.state == WalterModemRspParserState.START_CR:
+                    print('START_CR')
                     if b == ModemCore.CR:
+                        print('  CR')
                         self._parser_data.state = WalterModemRspParserState.START_LF
                     elif b == ModemCore.PLUS:
+                        print('  plus')
                         # This is the start of a new line in a multiline response
                         self._parser_data.state = WalterModemRspParserState.DATA
                         self._add_at_byte_to_buffer(b, False)
                 
                 elif self._parser_data.state == WalterModemRspParserState.START_LF:
+                    print('START_LF')
                     if b == ModemCore.LF:
+                        print('LF')
                         self._parser_data.state = WalterModemRspParserState.DATA
                 
                 elif self._parser_data.state == WalterModemRspParserState.DATA:
+                    print('DATA')
                     if b == ModemCore.GREATER_THAN:
+                        print('  GREATER_THAN')
                         self._parser_data.state = WalterModemRspParserState.DATA_PROMPT
                     elif b == ModemCore.SMALLER_THAN:
+                        print('  SMALLER_THAN')
                         self._parser_data.state = WalterModemRspParserState.DATA_HTTP_START1
                 
                     self._add_at_byte_to_buffer(b, False)
                     
                 elif self._parser_data.state == WalterModemRspParserState.DATA_PROMPT:
+                    print('DATA_PROMPT')
                     self._add_at_byte_to_buffer(b, False)
                     if b == ModemCore.SPACE:
+                        print('  SPACE')
                         self._parser_data.state = WalterModemRspParserState.START_CR
                         await self._queue_rx_buffer()
                     elif b == ModemCore.GREATER_THAN:
+                        print('  GREATER_THAN')
                         self._parser_data.state = WalterModemRspParserState.DATA_PROMPT_HTTP
                     else:
                         # state might have changed after detecting end \r
@@ -296,8 +307,10 @@ class ModemCore:
                             self._parser_data.state = WalterModemRspParserState.DATA
                 
                 elif self._parser_data.state == WalterModemRspParserState.DATA_PROMPT_HTTP:
+                    print('DATA_PROMPT_HTTP')
                     self._add_at_byte_to_buffer(b, False)
                     if b == ModemCore.GREATER_THAN:
+                        print('  GREATER_THAN')
                         self._parser_data.state = WalterModemRspParserState.START_CR
                         await self._queue_rx_buffer()
                     else:
@@ -306,7 +319,9 @@ class ModemCore:
                             self._parser_data.state = WalterModemRspParserState.DATA
 
                 elif self._parser_data.state == WalterModemRspParserState.DATA_HTTP_START1:
+                    print('DATA_HTTP_START1')
                     if b == ModemCore.SMALLER_THAN:
+                        print('  SMALLER_THAN')
                         self._parser_data.state = WalterModemRspParserState.DATA_HTTP_START2
                     else:
                         self._parser_data.state = WalterModemRspParserState.DATA
@@ -314,7 +329,9 @@ class ModemCore:
                     self._add_at_byte_to_buffer(b, False)
 
                 elif self._parser_data.state == WalterModemRspParserState.DATA_HTTP_START2:
+                    print('DATA_HTTP_START2')
                     if b == ModemCore.SMALLER_THAN and self._http_current_profile < ModemCore.MAX_HTTP_PROFILES:
+                        print('  SMALLER_THAN')
                         # FIXME: modem might block longer than cmd timeout,
                         # will lead to retry, error etc - fix properly
                         self._parser_data.raw_chunk_size = self._http_context_list[self._http_current_profile].content_length + len("\r\nOK\r\n")
@@ -325,8 +342,10 @@ class ModemCore:
                     self._add_at_byte_to_buffer(b, False)
 
                 elif self._parser_data.state == WalterModemRspParserState.END_LF:
+                    print('END_LF')
                     if b == ModemCore.LF:
-                        chunk_size = 0 # FIXME
+                        print('  LF')
+                        chunk_size = self._parser_data.raw_chunk_size if self._parser_data.raw_chunk_size else 0
                         #uint16_t chunkSize = _extractRawBufferChunkSize();
                         if chunk_size:
                             self._parser_data.raw_chunk_size = chunk_size
@@ -347,6 +366,7 @@ class ModemCore:
                             self._parser_data.state = WalterModemRspParserState.DATA
 
                 elif self._parser_data.state == WalterModemRspParserState.RAW:
+                    print('RAW')
                     self._add_at_byte_to_buffer(b, True)
                     self._parser_data.raw_chunk_size -= 1
 
