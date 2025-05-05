@@ -1150,8 +1150,9 @@ class ModemCore:
 #        if cmd is not None and cmd.at_rsp is not None:
 #            print('=====')
 #            print('Full response:', at_rsp)
-#            if isinstance(cmd.at_rsp, str):
-#                print('Expected prefix (str):', cmd.at_rsp)
+#            print('cmd.at_rsp:', cmd.at_rsp)
+#            if isinstance(cmd.at_rsp, bytes):
+#                print('Expected prefix (bytearray):', cmd.at_rsp)
 #                print('Response start:', at_rsp[:len(cmd.at_rsp)])
 #                print('Mismatch:', cmd.at_rsp != at_rsp[:len(cmd.at_rsp)])
 #            elif isinstance(cmd.at_rsp, tuple):
@@ -1163,7 +1164,7 @@ class ModemCore:
             cmd is None or
             cmd.at_rsp is None or
             cmd.type == WalterModemCmdType.TX or
-            (isinstance(cmd.at_rsp, str) and cmd.at_rsp != at_rsp[:len(cmd.at_rsp)]) or
+            (isinstance(cmd.at_rsp, bytes) and cmd.at_rsp != at_rsp[:len(cmd.at_rsp)]) or
             (isinstance(cmd.at_rsp, tuple) and not any(
                 at_rsp.startswith(rsp) for rsp in cmd.at_rsp)
             )
