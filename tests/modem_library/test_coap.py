@@ -10,10 +10,11 @@ from walter_modem import Modem
 from walter_modem.structs import (
     ModemRsp,
     ModemCoapContextState,
-    WalterModemOpState
+    ModemCoapResponse
 )
 from walter_modem.enums import (
     WalterModemState,
+    WalterModemOpState,
     WalterModemCoapCloseCause,
     WalterModemCoapMethod,
     WalterModemCoapType,
@@ -236,6 +237,7 @@ class TestCoapSend(
     # Context ID range validation
     
     async def test_fails_below_min_ctx_id(self):
+        modem.debug_log = True
         self.assert_false(await modem.coap_send(
             ctx_id=-1,
             m_type=WalterModemCoapType.CON,
@@ -479,35 +481,125 @@ class TestCoapReceiveData(
             at_cmd='AT+SQNCOAPCREATE=0,"coap.me",5683',
             at_rsp=b'+SQNCOAPCONNECTED: '
         )
-    
-    async def test_receive(self):
-        modem.debug_log = True
-        await modem._run_cmd('AT+SQNCOAPOPT=0,0,11,"test"',b'OK')
-        await modem.coap_send(
-            ctx_id=0,
-            m_type=WalterModemCoapType.CON,
-            method=WalterModemCoapMethod.GET,
-            length=0,
-            data=None
+
+    async def async_teardown(self):
+        await modem._run_cmd(
+            at_cmd='AT+SQNCOAPCLOSE=0',
+            at_rsp=b'OK'
         )
+
+    # Context ID range validation
+
+    async def test_fails_below_min_ctx_id(self):
+        modem.debug_log = True
+        rsp = ModemRsp()
+        self.assert_false(await modem.coap_receive_data(
+            ctx_id=-1,
+            msg_id=1,
+            length=10
+        ))
+
+    async def test_fails_above_max_ctx_id(self):
+        rsp = ModemRsp()
+        self.assert_false(await modem.coap_receive_data(
+            ctx_id=3,
+            msg_id=1,
+            length=10
+        ))
+
+    async def test_rsp_result_no_such_profile_on_invalid_ctx_id(self):
+        rsp = ModemRsp()
+        await modem.coap_receive_data(ctx_id=7, msg_id=1, length=10, rsp=rsp)
+        self.assert_equal(WalterModemState.NO_SUCH_PROFILE, rsp.result)
+
+    # max_bytes range validation
+
+    async def test_fails_below_min_max_bytes(self):
+        rsp = ModemRsp()
+        self.assert_false(await modem.coap_receive_data(
+            ctx_id=0,
+            msg_id=1,
+            length=10,
+            max_bytes=-1,
+        ))
+
+    async def test_fails_above_max_max_bytes(self):
+        rsp = ModemRsp()
+        self.assert_false(await modem.coap_receive_data(
+            ctx_id=0,
+            msg_id=1,
+            length=10,
+            max_bytes=2048
+        ))
+
+    async def test_rsp_result_error_on_invalid_max_bytes(self):
+        rsp = ModemRsp()
+        await modem.coap_receive_data(ctx_id=0, msg_id=1, length=10, max_bytes=-1, rsp=rsp)
+        self.assert_equal(WalterModemState.ERROR, rsp.result)
+
+    # Length validation
+
+    async def test_fails_with_negative_length(self):
+        rsp = ModemRsp()
+        self.assert_false(await modem.coap_receive_data(
+            ctx_id=0,
+            msg_id=1,
+            length=-1
+        ))
+
+    async def test_rsp_result_error_on_negative_length(self):
+        rsp = ModemRsp()
+        await modem.coap_receive_data(ctx_id=0, msg_id=1, length=-1, rsp=rsp)
+        self.assert_equal(WalterModemState.ERROR, rsp.result)
+
+    # Method run
+
+    async def test_sends_expected_at_cmd(self):
+        modem.coap_context_states[0].rings.clear()
+        await modem._run_cmd('AT+SQNCOAPOPT=0,0,11,"test"',b'OK')
+        await modem.coap_send(0,WalterModemCoapType.CON,WalterModemCoapMethod.GET)
 
         while len(modem.coap_context_states[0].rings) <= 0:
             await asyncio.sleep(3)
         ring = modem.coap_context_states[0].rings.pop()
 
+        await self.assert_sends_at_command(
+            modem,
+            f'AT+SQNCOAPRCV={ring.ctx_id},{ring.msg_id},512',
+            lambda: modem.coap_receive_data(
+                ctx_id=ring.ctx_id,
+                msg_id=ring.msg_id,
+                length=ring.length,
+                max_bytes=512
+            ),
+            b'+SQNCOAPRCV: '
+        )
+    
+    async def test_coap_response_is_set_in_modem_rsp(self):
+        modem.coap_context_states[0].rings.clear()
+        await modem._run_cmd('AT+SQNCOAPOPT=0,0,11,"test"',b'OK')
+        await modem.coap_send(0,WalterModemCoapType.CON,WalterModemCoapMethod.GET)
+
+        while len(modem.coap_context_states[0].rings) <= 0:
+            await asyncio.sleep(3)
+        ring = modem.coap_context_states[0].rings.pop()
+
+        modem_rsp = ModemRsp()
         await modem.coap_receive_data(
             ctx_id=ring.ctx_id,
             msg_id=ring.msg_id,
             length=ring.length,
-            max_bytes=5
+            rsp=modem_rsp
         )
-        await asyncio.sleep(10)
-        self.assert_true(True)
+        self.assert_is_instance(modem_rsp.coap_response, ModemCoapResponse)
+        print('payload: ')
+        print(modem_rsp.coap_response.payload)
+        print('=======')
 
 testcases = [testcase() for testcase in (
-    #TestCoapContextCreate,
-    #TestCoapContextClose,
-    #TestCoapSend,
+    TestCoapContextCreate,
+    TestCoapContextClose,
+    TestCoapSend,
     TestCoapReceiveData,
 )]
 

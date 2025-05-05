@@ -302,7 +302,7 @@ class WalterModemAsserts:
             
             for _ in range(timeout_s):
                 if sent_cmd is not None: break
-                await asyncio.sleep(1)
+                await asyncio.sleep(3)
             modem_instance.unregister_application_queue_rsp_handler(cmd_handler)
 
             if error:

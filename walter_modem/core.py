@@ -39,7 +39,8 @@ from .structs import (
     ModemRsp,
     ModemMqttMessage,
     ModemCoapRing,
-    ModemCoapContextState
+    ModemCoapContextState,
+    ModemCoapResponse
 )
 
 from .utils import (
@@ -326,9 +327,10 @@ class ModemCore:
 
                 elif self._parser_data.state == WalterModemRspParserState.END_LF:
                     if b == ModemCore.LF:
-                        chunk_size = self._parser_data.raw_chunk_size if self._parser_data.raw_chunk_size else 0
-                        if chunk_size:
-                            self._parser_data.raw_chunk_size = chunk_size
+                        if b'+CME ERROR' in self._parser_data.line:
+                            self._parser_data.raw_chunk_size = 0
+
+                        if self._parser_data.raw_chunk_size:
                             self._parser_data.line += b'\r'
                             self._parser_data.state = WalterModemRspParserState.RAW
                         else:
@@ -481,7 +483,7 @@ class ModemCore:
         return WalterModemState.ERROR
 
     async def _handle_sqn_coap_ring_err(self, tx_stream, cmd, at_rsp):
-        log('WARNING', str(at_rsp.split(b': ')[1].replace(b',', b', ')))
+        log('WARNING', at_rsp.split(b': ')[1].replace(b',', b', ').decode('utf-8'))
     
     async def _handle_sqn_coap_ring(self, tx_stream, cmd, at_rsp):
         parts = at_rsp.split(b': ')[1].split(b',')
@@ -500,8 +502,25 @@ class ModemCore:
         return WalterModemState.OK
 
     async def _handle_sqn_coap_rcv(self, tx_stream, cmd, at_rsp):
-        print('hello hello')
-        print(at_rsp)
+        header, payload = at_rsp.split(b': ')[1].split(b'\r')
+        header = header.split(b',')
+
+        ctx_id, msg_id = int(header[0].decode()), int(header[1].decode())
+        token = header[2].decode()
+        req_resp, m_type, method_or_rsp_code, length = [int(p.decode()) for p in header[3:]]
+
+        cmd.rsp.type = WalterModemRspType.COAP
+        cmd.rsp.coap_response = ModemCoapResponse(
+            ctx_id=ctx_id,
+            msg_id=msg_id,
+            token=token,
+            req_resp=req_resp,
+            m_type=m_type,
+            method=method_or_rsp_code if req_resp == WalterModemCoapReqResp.REQUEST else None,
+            rsp_code=method_or_rsp_code if req_resp == WalterModemCoapReqResp.RESPONSE else None,
+            length=length,
+            payload=payload
+        )
 
         return WalterModemState.OK
 

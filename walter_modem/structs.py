@@ -220,6 +220,8 @@ class ModemRsp:
 
         self.cell_information: ModemCellInformation | None = None
 
+        self.coap_response: ModemCoapResponse | None = None
+
 class ModemMqttMessage:
     def __init__(self, topic, length, qos, message_id = None, payload = None):
         self.topic = topic
@@ -442,3 +444,15 @@ class ModemCoapRing:
         self.method: WalterModemCoapMethod | None = method
         self.rsp_code: WalterModemCoapResponseCode | None = rsp_code
         self.length: int = length
+
+class ModemCoapResponse:
+    def __init__(self, ctx_id, msg_id, token, req_resp, m_type, method, rsp_code, length, payload):
+        self.ctx_id: int = ctx_id
+        self.msg_id: int = msg_id
+        self.token: str = token
+        self.req_resp: int = req_resp
+        self.type: WalterModemCoapType = m_type
+        self.method: WalterModemCoapMethod | None = method
+        self.rsp_code: WalterModemCoapResponseCode | None = rsp_code
+        self.length: int = length
+        self.payload: bytearray = payload

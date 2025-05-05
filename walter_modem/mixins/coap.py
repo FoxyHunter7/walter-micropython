@@ -159,6 +159,7 @@ class ModemCoap(ModemCore):
 
         :param ctx_id: Context profile identifier (0, 1, 2)
         :param msg_id: CoAP message id
+        :param length: The length of the payload to receive (the length of the ring)
         :param max_bytes: How many bytes of the message to payload to read at once
         :param rsp: Reference to a modem response instance
 
@@ -173,12 +174,14 @@ class ModemCoap(ModemCore):
             if rsp: rsp.result = WalterModemState.ERROR
             return False
         
+        if length < 0:
+            if rsp: rsp.result = WalterModemState.ERROR
+            return False
+        
         self._parser_data.raw_chunk_size = min(length, max_bytes)
         
         return await self._run_cmd(
             rsp=rsp,
             at_cmd=f'AT+SQNCOAPRCV={ctx_id},{msg_id},{max_bytes}',
-            at_rsp=b'+SQNCOAPRCV',
+            at_rsp=b'+SQNCOAPRCV'
         )
-        
-
