@@ -33,20 +33,21 @@ class TestCoapContextCreate(
 ):  
     async def async_setup(self):
         await modem.begin()
+        modem.debug_log = True
         await self.ensure_network_connection(modem_instance=modem)
 
     async def async_teardown(self):
         await modem._run_cmd(
             at_cmd='AT+SQNCOAPCLOSE=0',
-            at_rsp=b'OK'
+            at_rsp=b'+SQNCOAPCLOSED: '
         )
         await modem._run_cmd(
             at_cmd='AT+SQNCOAPCLOSE=1',
-            at_rsp=b'OK'
+            at_rsp=b'+SQNCOAPCLOSED: '
         )
         await modem._run_cmd(
             at_cmd='AT+SQNCOAPCLOSE=2',
-            at_rsp=b'OK'
+            at_rsp=b'+SQNCOAPCLOSED: '
         )
 
         modem.coap_context_states[0].rings.clear()
@@ -168,15 +169,6 @@ class TestCoapContextClose(
             at_rsp=b'+SQNCOAPCONNECTED: '
         )
 
-        self.closed_by_network = False
-
-        def closed_handler(cmd, at_rsp):
-            if b'0,"NETWORK"' in at_rsp:
-                self.closed_by_network = True
-                modem.unregister_application_queue_rsp_handler(closed_handler)
-
-        modem.register_application_queue_rsp_handler(b'+SQNCOAPCLOSED: ', closed_handler)
-
     # Context ID range validation
 
     async def test_fails_below_min_ctx_id(self):
@@ -207,9 +199,8 @@ class TestCoapContextClose(
         self.assert_equal(WalterModemCoapCloseCause.USER, modem.coap_context_states[1].cause)
     
     async def test_ctx_state_cause_equals_network_after_network_close(self):
+        modem.debug_log = True
         await modem.set_op_state(WalterModemOpState.MINIMUM)
-        while not self.closed_by_network:
-            await asyncio.sleep(1)
         
         self.assert_equal(WalterModemCoapCloseCause.NETWORK, modem.coap_context_states[0].cause)
 
@@ -230,7 +221,7 @@ class TestCoapSend(
     async def async_teardown(self):
         await modem._run_cmd(
             at_cmd='AT+SQNCOAPCLOSE=0',
-            at_rsp=b'OK'
+            at_rsp=b'+SQNCOAPCLOSED: '
         )
         modem.coap_context_states[0].rings.clear()
     
@@ -485,7 +476,7 @@ class TestCoapReceiveData(
     async def async_teardown(self):
         await modem._run_cmd(
             at_cmd='AT+SQNCOAPCLOSE=0',
-            at_rsp=b'OK'
+            at_rsp=b'+SQNCOAPCLOSED: '
         )
 
     # Context ID range validation

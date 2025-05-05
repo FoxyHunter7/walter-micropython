@@ -96,7 +96,7 @@ class ModemCoap(ModemCore):
         return await self._run_cmd(
             rsp=rsp,
             at_cmd=f'AT+SQNCOAPCLOSE={ctx_id}',
-            at_rsp=b'OK'
+            at_rsp=b'+SQNCOAPCLOSED: '
         )
     
     async def coap_send(self,
