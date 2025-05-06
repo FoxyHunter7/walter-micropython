@@ -347,6 +347,7 @@ class TestCoapSend(
         await modem._run_cmd('AT+SQNCOAPOPT=0,0,11,"test"',b'OK')
         await modem._run_cmd('AT+SQNCOAPOPT=0,0,12,0', b'OK')
         test_data = 'Hello from Walter Modem'
+        modem.coap_context_states[0].rings.clear()
         self.assert_true(await modem.coap_send(
             ctx_id=0,
             m_type=WalterModemCoapType.CON,
@@ -370,6 +371,7 @@ class TestCoapSend(
     async def test_put_test_endpoint(self):
         await modem._run_cmd('AT+SQNCOAPOPT=0,0,11,"test"',b'OK')
         test_data = 'Updated resource data'
+        modem.coap_context_states[0].rings.clear()
         self.assert_true(await modem.coap_send(
             ctx_id=0,
             m_type=WalterModemCoapType.CON,
@@ -392,6 +394,7 @@ class TestCoapSend(
 
     async def test_delete_test_endpoint(self):
         await modem._run_cmd('AT+SQNCOAPOPT=0,0,11,"test"',b'OK')
+        modem.coap_context_states[0].rings.clear()
         self.assert_true(await modem.coap_send(
             ctx_id=0,
             m_type=WalterModemCoapType.CON,
@@ -583,10 +586,10 @@ class TestCoapReceiveData(
         print(f'\n  payload: {modem_rsp.coap_response.payload}')
 
 testcases = [testcase() for testcase in (
-    #TestCoapContextCreate,
-    #TestCoapContextClose,
+    TestCoapContextCreate,
+    TestCoapContextClose,
     TestCoapSend,
-    #TestCoapReceiveData,
+    TestCoapReceiveData,
 )]
 
 for testcase in testcases:
