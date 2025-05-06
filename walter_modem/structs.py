@@ -421,7 +421,7 @@ class ModemCoapContextState:
         self.connected: bool = False
         """Whether or not the coap profile is connected or listening."""
 
-        self.cause: None | WalterModemCoapCloseCause
+        self.cause: None | WalterModemCoapCloseCause = None
         """If connection lost/disconnected; the reason why"""
 
         self.rings: list[ModemCoapRing] = []

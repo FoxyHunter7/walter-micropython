@@ -200,6 +200,7 @@ class TestCoapContextClose(
     
     async def test_ctx_state_cause_equals_network_after_network_close(self):
         await modem.set_op_state(WalterModemOpState.MINIMUM)
+        await asyncio.sleep(2) # closed URC should've been triggered by now
         self.assert_equal(WalterModemCoapCloseCause.NETWORK, modem.coap_context_states[0].cause)
 
 class TestCoapSend(
@@ -583,8 +584,8 @@ class TestCoapReceiveData(
 
 testcases = [testcase() for testcase in (
     #TestCoapContextCreate,
-    TestCoapContextClose,
-    #TestCoapSend,
+    #TestCoapContextClose,
+    TestCoapSend,
     #TestCoapReceiveData,
 )]
 
