@@ -271,6 +271,9 @@ class ModemCore:
                         # This is the start of a new line in a multiline response
                         self._parser_data.state = WalterModemRspParserState.DATA
                         self._add_at_byte_to_buffer(b, False)
+                    else:
+                        self._parser_data.state = WalterModemRspParserState.DATA
+                        self._add_at_byte_to_buffer(b, False)
                 
                 elif self._parser_data.state == WalterModemRspParserState.START_LF:
                     if b == ModemCore.LF:
@@ -345,6 +348,7 @@ class ModemCore:
                         # (but > will not lead to data prompt mode)
                         self._add_at_byte_to_buffer(b, False)
                         if b != ModemCore.CR:
+                            print('UART >>>     CR')
                             self._parser_data.state = WalterModemRspParserState.DATA
 
                 elif self._parser_data.state == WalterModemRspParserState.RAW:
@@ -352,6 +356,141 @@ class ModemCore:
                     self._parser_data.raw_chunk_size -= 1
 
                     if self._parser_data.raw_chunk_size == 0:
+                        self._parser_data.state = WalterModemRspParserState.START_CR
+                        await self._queue_rx_buffer()
+
+    async def _dev_debug_uart_reader(self):
+        rx_stream = asyncio.StreamReader(self._uart, {})
+
+        while True:
+            incoming_uart_data = bytearray(256)
+            size = await rx_stream.readinto(incoming_uart_data)
+            print(incoming_uart_data[:size].strip(b'\x00'))
+            print(WalterModemRspParserState.get_value_name(self._parser_data.state))
+
+            for b in incoming_uart_data[:size].strip(b'\x00'):
+                if self._parser_data.state == WalterModemRspParserState.START_CR:
+                    print('UART >>> START_CR')
+                    if b == ModemCore.CR:
+                        print('UART >>>   CR')
+                        self._parser_data.state = WalterModemRspParserState.START_LF
+                    elif b == ModemCore.PLUS:
+                        print('UART >>>   PLUS')
+                        # This is the start of a new line in a multiline response
+                        self._parser_data.state = WalterModemRspParserState.DATA
+                        self._add_at_byte_to_buffer(b, False)
+                    else:
+                        self._parser_data.state = WalterModemRspParserState.DATA
+                        self._add_at_byte_to_buffer(b, False)
+                
+                elif self._parser_data.state == WalterModemRspParserState.START_LF:
+                    print('UART >>> START_LF')
+                    if b == ModemCore.LF:
+                        print('UART >>>   LF')
+                        self._parser_data.state = WalterModemRspParserState.DATA
+                
+                elif self._parser_data.state == WalterModemRspParserState.DATA:
+                    print('UART >>> DATA')
+                    if b == ModemCore.GREATER_THAN:
+                        print('UART >>>   GREATER_THAN')
+                        self._parser_data.state = WalterModemRspParserState.DATA_PROMPT
+                    elif b == ModemCore.SMALLER_THAN:
+                        print('UART >>>   SMALLER_THAN')
+                        self._parser_data.state = WalterModemRspParserState.DATA_HTTP_START1
+                
+                    self._add_at_byte_to_buffer(b, False)
+                    
+                elif self._parser_data.state == WalterModemRspParserState.DATA_PROMPT:
+                    print('UART >>> DATA_PROMPT')
+                    self._add_at_byte_to_buffer(b, False)
+                    if b == ModemCore.SPACE:
+                        print('UART >>>   SPACE')
+                        self._parser_data.state = WalterModemRspParserState.START_CR
+                        await self._queue_rx_buffer()
+                    elif b == ModemCore.GREATER_THAN:
+                        print('UART >>>   GREATTER_THAN')
+                        self._parser_data.state = WalterModemRspParserState.DATA_PROMPT_HTTP
+                    else:
+                        print('UART >>>   else...')
+                        # state might have changed after detecting end \r
+                        if self._parser_data.state == WalterModemRspParserState.DATA_PROMPT:
+                            self._parser_data.state = WalterModemRspParserState.DATA
+                
+                elif self._parser_data.state == WalterModemRspParserState.DATA_PROMPT_HTTP:
+                    print('UART >>> DATA_PROMPT_HTTP')
+                    self._add_at_byte_to_buffer(b, False)
+                    if b == ModemCore.GREATER_THAN:
+                        print('UART >>>   GREATER_THAN')
+                        self._parser_data.state = WalterModemRspParserState.START_CR
+                        await self._queue_rx_buffer()
+                    else:
+                        print('UART >>>   else...')
+                        # state might have changed after detecting end \r
+                        if self._parser_data.state == WalterModemRspParserState.DATA_PROMPT_HTTP:
+                            print('UART >>>     DATA_PROMPT_HTTP')
+                            self._parser_data.state = WalterModemRspParserState.DATA
+
+                elif self._parser_data.state == WalterModemRspParserState.DATA_HTTP_START1:
+                    print('UART >>> DATA_HTTP_START1')
+                    if b == ModemCore.SMALLER_THAN:
+                        print('UART >>>   SMALLER_THAN')
+                        self._parser_data.state = WalterModemRspParserState.DATA_HTTP_START2
+                    else:
+                        print('UART >>>   else...')
+                        self._parser_data.state = WalterModemRspParserState.DATA
+
+                    self._add_at_byte_to_buffer(b, False)
+
+                elif self._parser_data.state == WalterModemRspParserState.DATA_HTTP_START2:
+                    print('UART >>> DATA_HTTP_START2')
+                    if b == ModemCore.SMALLER_THAN and self._http_current_profile < ModemCore.MAX_HTTP_PROFILES:
+                        print('UART >>>   SMALLER_THAN')
+                        # FIXME: modem might block longer than cmd timeout,
+                        # will lead to retry, error etc - fix properly
+                        self._parser_data.raw_chunk_size = self._http_context_list[self._http_current_profile].content_length + len("\r\nOK\r\n")
+                        self._parser_data.state = WalterModemRspParserState.RAW
+                    else:
+                        print('UART >>>   else...')
+                        self._parser_data.state = WalterModemRspParserState.DATA
+
+                    self._add_at_byte_to_buffer(b, False)
+
+                elif self._parser_data.state == WalterModemRspParserState.END_LF:
+                    print('UART >>> END_LF')
+                    if b == ModemCore.LF:
+                        print('UART >>>   LF')
+                        if b'+CME ERROR' in self._parser_data.line:
+                            print('UART >>>     +CME ERROR detected')
+                            self._parser_data.raw_chunk_size = 0
+
+                        if self._parser_data.raw_chunk_size:
+                            print('UART >>>     chunk size truthy')
+                            self._parser_data.line += b'\r'
+                            self._parser_data.state = WalterModemRspParserState.RAW
+                        else:
+                            print('UART >>>     else...')
+                            self._parser_data.state = WalterModemRspParserState.START_CR
+                            await self._queue_rx_buffer()
+                    else:
+                        print('UART >>>   else...')
+                        # only now we know the \r was thrown away for no good reason
+                        self._parser_data.line += b'\r'
+
+                        # next byte gets the same treatment; since we really are
+                        # back in semi DATA state, as we now know
+                        # (but > will not lead to data prompt mode)
+                        self._add_at_byte_to_buffer(b, False)
+                        if b != ModemCore.CR:
+                            print('UART >>>     CR')
+                            self._parser_data.state = WalterModemRspParserState.DATA
+
+                elif self._parser_data.state == WalterModemRspParserState.RAW:
+                    print('UART >>> RAW')
+                    self._add_at_byte_to_buffer(b, True)
+                    self._parser_data.raw_chunk_size -= 1
+
+                    if self._parser_data.raw_chunk_size == 0:
+                        print('UART >>>   raw_chunk_size == 0')
                         self._parser_data.state = WalterModemRspParserState.START_CR
                         await self._queue_rx_buffer()
 

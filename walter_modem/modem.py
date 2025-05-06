@@ -36,7 +36,8 @@ class Modem(
         ModemCore.__init__(self)
 
     async def begin(self,
-        debug_log: bool = False
+        debug_log: bool = False,
+        _dev_debug_uart_reader = False
     ):
         if not self._begun:
             self.debug_log = debug_log
@@ -62,7 +63,10 @@ class Modem(
             self._command_queue = Queue()
             self._parser_data = ModemATParserData()
 
-            self._uart_reader_task = asyncio.create_task(self._uart_reader())
+            if _dev_debug_uart_reader:
+                self._uart_reader_task = asyncio.create_task(self._dev_debug_uart_reader())
+            else:
+                self._uart_reader_task = asyncio.create_task(self._uart_reader())
             self._queue_worker_task = asyncio.create_task(self._queue_worker())
 
             
