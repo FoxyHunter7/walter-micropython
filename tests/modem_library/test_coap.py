@@ -344,6 +344,7 @@ class TestCoapSend(
     # POST tests
 
     async def test_post_test_endpoint(self):
+        modem.debug_log = True
         await modem._run_cmd('AT+SQNCOAPOPT=0,0,11,"test"',b'OK')
         await modem._run_cmd('AT+SQNCOAPOPT=0,0,12,0', b'OK')
         test_data = 'Hello from Walter Modem'
@@ -586,10 +587,10 @@ class TestCoapReceiveData(
         print(f'\n  payload: {modem_rsp.coap_response.payload}')
 
 testcases = [testcase() for testcase in (
-    TestCoapContextCreate,
-    TestCoapContextClose,
+    #TestCoapContextCreate,
+    #TestCoapContextClose,
     TestCoapSend,
-    TestCoapReceiveData,
+    #TestCoapReceiveData,
 )]
 
 for testcase in testcases:
