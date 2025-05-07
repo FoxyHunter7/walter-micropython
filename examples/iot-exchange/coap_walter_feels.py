@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import machine # type: ignore
+import time
 
 from hdc1080 import HDC1080 # type: ignore
 from lps22hb import LPS22HB
@@ -42,6 +43,7 @@ wdt = machine.WDT(timeout=60000)
 hdc1080: HDC1080
 lps22hb: LPS22HB
 ltc4015: LTC4015
+scd30: SCD30
 
 data = None
 
@@ -74,11 +76,15 @@ async def secure_profile_setup() -> bool:
 
 def walter_feels_data_readout():
     global data
+
+    while scd30.get_status_ready() != 1:
+        time.sleep_ms(200)
+
     data = (
         ('temperature', hdc1080.temperature()),
         ('humidity', hdc1080.humidity()),
         ('pressure', lps22hb.read_pressure()),
-        ('co2', 'not implemented'),
+        ('co2', scd30.read_measurement()),
         ('input_voltage', ltc4015.get_input_voltage()),
         ('input_current', ltc4015.get_input_current()),
         ('system_voltage', ltc4015.get_system_voltage()),
@@ -100,24 +106,25 @@ async def sensors_setup():
     global hdc1080
     global lps22hb
     global ltc4015
+    global scd30
 
     # Output pins
-    PWR_3V3_EN_PIN     = machine.Pin(0,  machine.Pin.OUT)
-    PWR_12V_EN_PIN     = machine.Pin(43, machine.Pin.OUT)
-    I2C_BUS_PWR_EN_PIN = machine.Pin(1,  machine.Pin.OUT)
-    CAN_EN_PIN         = machine.Pin(44, machine.Pin.OUT)
-    SDI12_TX_EN_PIN    = machine.Pin(10, machine.Pin.OUT)
-    SDI12_RX_EN_PIN    = machine.Pin(9,  machine.Pin.OUT)
-    RS232_TX_EN_PIN    = machine.Pin(17, machine.Pin.OUT)
-    RS232_RX_EN_PIN    = machine.Pin(16, machine.Pin.OUT)
-    RS485_TX_EN_PIN    = machine.Pin(18, machine.Pin.OUT)
-    RS485_RX_EN_PIN    = machine.Pin(8,  machine.Pin.OUT)
-    CO2_EN_PIN         = machine.Pin(13, machine.Pin.OUT)
-    CO2_SCL_PIN        = machine.Pin(11, machine.Pin.OUT)
+    PWR_3V3_EN_PIN     = machine.Pin(0,  machine.Pin.OUT, value=0) # 0: enabled
+    PWR_12V_EN_PIN     = machine.Pin(43, machine.Pin.OUT, value=0) # 0: disabled
+    I2C_BUS_PWR_EN_PIN = machine.Pin(1,  machine.Pin.OUT, value=1) # 0: disabled
+    CAN_EN_PIN         = machine.Pin(44, machine.Pin.OUT, value=1) # 1: disabled
+    SDI12_TX_EN_PIN    = machine.Pin(10, machine.Pin.OUT, value=0) # 0: disabled
+    SDI12_RX_EN_PIN    = machine.Pin(9,  machine.Pin.OUT, value=0) # 0: disabled
+    RS232_TX_EN_PIN    = machine.Pin(17, machine.Pin.OUT, value=0) # 0: disabled
+    RS232_RX_EN_PIN    = machine.Pin(16, machine.Pin.OUT, value=1) # 1: disabled
+    RS485_TX_EN_PIN    = machine.Pin(18, machine.Pin.OUT, value=0) # 0: disabled
+    RS485_RX_EN_PIN    = machine.Pin(8,  machine.Pin.OUT, value=1) # 1: disabled
+    CO2_EN_PIN         = machine.Pin(13, machine.Pin.OUT, value=0) # 0: enabled
+    CO2_SCL_PIN        = machine.Pin(11)
 
     # Input pins
-    I2C_SDA_PIN = machine.Pin(42, machine.Pin.OPEN_DRAIN)
-    I2C_SCL_PIN = machine.Pin(2,  machine.Pin.OPEN_DRAIN)
+    I2C_SDA_PIN = machine.Pin(42)
+    I2C_SCL_PIN = machine.Pin(2)
     SD_CMD_PIN  = machine.Pin(6,  machine.Pin.IN)
     SD_CLK_PIN  = machine.Pin(5,  machine.Pin.IN)
     SD_DAT0_PIN = machine.Pin(4,  machine.Pin.IN)
@@ -129,40 +136,25 @@ async def sensors_setup():
     CAN_TX_PIN  = machine.Pin(15, machine.Pin.IN)
     CO2_SDA_PIN = machine.Pin(12, machine.Pin.IN)
 
-    # Disable all peripherals
-    PWR_3V3_EN_PIN.value(1)
-    PWR_12V_EN_PIN.value(0)
-    I2C_BUS_PWR_EN_PIN.value(0)
-    CAN_EN_PIN.value(1)
-    SDI12_TX_EN_PIN.value(0)
-    SDI12_RX_EN_PIN.value(0)
-    RS232_TX_EN_PIN.value(0)
-    RS232_RX_EN_PIN.value(1)
-    RS485_TX_EN_PIN.value(0)
-    RS485_RX_EN_PIN.value(1)
-    CO2_EN_PIN.value(1)
-
     # Initialize I2C
+    await asyncio.sleep(1)
     i2c = machine.I2C(0, scl=I2C_SCL_PIN, sda=I2C_SDA_PIN)
+    co2_i2c = machine.I2C(1, scl=CO2_SCL_PIN, sda=CO2_SDA_PIN, freq=40000)
 
-    # Initialize charging
+    # Initialize ltc4015 (charging)
     ltc4015 = LTC4015(i2c, 3, 4)
-    I2C_BUS_PWR_EN_PIN.value(1)
     ltc4015.initialize()
     ltc4015.enable_coulomb_counter()
-    I2C_BUS_PWR_EN_PIN.value(0)
-
-    PWR_3V3_EN_PIN.value(0)
-    I2C_BUS_PWR_EN_PIN.value(1)
-    await asyncio.sleep(1)
 
     # Initialize the sensors
     hdc1080 = HDC1080(i2c)
     hdc1080.config(mode=1)
     lps22hb = LPS22HB(i2c)
     lps22hb.begin()
-    await ltc4015_setup()
+    scd30 = SCD30(co2_i2c, 0x61)
+    scd30.start_continous_measurement()
 
+    await ltc4015_setup()
     return True
 
 async def await_connection():
@@ -210,8 +202,8 @@ async def send_data():
             ctx_id=COAP_CTX_ID,
             m_type=WalterModemCoapType.CON,
             method=WalterModemCoapMethod.POST,
-            length=len(data),
-            data=data
+            length=len('Hello World'),
+            data='Hello World'
         ):
             raise Exception('Failure during sending of data over coap')
 
@@ -243,7 +235,7 @@ async def main():
         print('Exception caught: ')
         sys.print_exception(err)
         print('=======\nHard resetting in 5sec...')
-        await asyncio.sleep(5)
+        await asyncio.sleep(200)
         machine.reset()
 
 asyncio.run(main())
