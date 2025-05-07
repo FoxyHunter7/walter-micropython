@@ -2,6 +2,7 @@ import asyncio
 import sys
 import machine # type: ignore
 import time
+import json
 
 from hdc1080 import HDC1080 # type: ignore
 from lps22hb import LPS22HB
@@ -15,7 +16,8 @@ from walter_modem.enums import (
     WalterModemTlsValidation,
     WalterModemTlsVersion,
     WalterModemCoapType,
-    WalterModemCoapMethod
+    WalterModemCoapMethod,
+    WalterModemSocketAcceptAnyRemote
 )
 from walter_modem.structs import (
     ModemRsp,
@@ -26,12 +28,13 @@ import config
 PDP_CTX_ID = 1
 TLS_CTX_ID = 1
 COAP_CTX_ID = 0
+SOCKET_CTX_ID = 2
 
 PRIVATE_KEY_ID = 10
 CA_CERT_ID = 11
 CLIENT_CERT_ID = 12
 
-IOT_EXCHANGE_ADDR = 'receivers.iot-exchange.io'
+IOT_EXCHANGE_ADDR = '35.153.43.192'
 IOT_EXCHANGE_PORT = 5684
 
 SLEEP_TIME = 60
@@ -79,19 +82,24 @@ def walter_feels_data_readout():
 
     while scd30.get_status_ready() != 1:
         time.sleep_ms(200)
+    scd_co2, scd_temperature, scd_relh = scd30.read_measurement()
 
-    data = (
-        ('temperature', hdc1080.temperature()),
-        ('humidity', hdc1080.humidity()),
-        ('pressure', lps22hb.read_pressure()),
-        ('co2', scd30.read_measurement()),
-        ('input_voltage', ltc4015.get_input_voltage()),
-        ('input_current', ltc4015.get_input_current()),
-        ('system_voltage', ltc4015.get_system_voltage()),
-        ('battery_voltage', ltc4015.get_battery_voltage()),
-        ('battery_current', ltc4015.get_charge_current()),
-        ('battery_percentage', ltc4015.get_estimated_battery_percentage())
-    )
+    data = json.dumps({
+        'temperature': hdc1080.temperature(),
+        'humidity': hdc1080.humidity(),
+        'pressure': lps22hb.read_pressure(),
+        'scd30': {
+            'co2': scd_co2,
+            'temperature': scd_temperature,
+            'relative_humidity': scd_relh
+        },
+        'input_voltage': ltc4015.get_input_voltage(),
+        'input_current': ltc4015.get_input_current(),
+        'system_voltage': ltc4015.get_system_voltage(),
+        'battery_voltage': ltc4015.get_battery_voltage(),
+        'battery_current': ltc4015.get_charge_current(),
+        'battery_percentage': ltc4015.get_estimated_battery_percentage()
+    })
 
 async def ltc4015_setup():
     ltc4015.initialize()
@@ -183,8 +191,6 @@ async def ensure_network_connection() -> bool:
 async def send_data():
     if not await ensure_network_connection():
         raise Exception('Unable to connect / verify network connection')
-
-    print(data)
     
     if not modem.coap_context_states[COAP_CTX_ID].configured:
         if not await modem.coap_context_create(
@@ -202,8 +208,8 @@ async def send_data():
             ctx_id=COAP_CTX_ID,
             m_type=WalterModemCoapType.CON,
             method=WalterModemCoapMethod.POST,
-            length=len('Hello World'),
-            data='Hello World'
+            length=len(data),
+            data=data
         ):
             raise Exception('Failure during sending of data over coap')
 
@@ -212,7 +218,7 @@ async def main():
         wdt.feed()
         await modem.begin(debug_log=True)
 
-        if machine.reset_cause() == machine.PWRON_RESET:
+        if True:#machine.reset_cause() == machine.PWRON_RESET:
             if not ( # Relying on short-circuiting
                 await pdp_ctx_setup() and
                 await secure_profile_setup()
