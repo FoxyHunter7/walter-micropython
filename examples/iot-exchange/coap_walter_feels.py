@@ -17,7 +17,8 @@ from walter_modem.enums import (
     WalterModemTlsVersion,
     WalterModemCoapType,
     WalterModemCoapMethod,
-    WalterModemSocketAcceptAnyRemote
+    WalterModemPSMMode,
+    WalterModemEDRXMODE
 )
 from walter_modem.structs import (
     ModemRsp,
@@ -28,7 +29,6 @@ import config
 PDP_CTX_ID = 1
 TLS_CTX_ID = 1
 COAP_CTX_ID = 0
-SOCKET_CTX_ID = 2
 
 PRIVATE_KEY_ID = 10
 CA_CERT_ID = 11
@@ -50,13 +50,13 @@ scd30: SCD30
 
 data = None
 
-async def pdp_ctx_setup() -> bool:
+async def setup_pdp_ctx() -> bool:
     return await modem.create_PDP_context(
         context_id=PDP_CTX_ID,
         apn=config.APN
     )
 
-async def secure_profile_setup() -> bool:
+async def setup_secure_profile() -> bool:
     return (
         await modem.tls_write_credential(
             is_private_key=True,
@@ -77,29 +77,38 @@ async def secure_profile_setup() -> bool:
         )
     )
 
+async def setup_modem_power_saving() -> bool:
+    return (
+        await modem.config_PSM(
+            mode=WalterModemPSMMode.ENABLE_PSM,
+            periodic_TAU_s=3600,
+            active_time_s=5
+        ) and
+        await modem.config_EDRX(
+            mode=WalterModemEDRXMODE.ENABLE_EDRX,
+            req_edrx_val='0010',
+            req_ptw='0001'
+        )
+    )
+
 def walter_feels_data_readout():
     global data
 
     while scd30.get_status_ready() != 1:
         time.sleep_ms(200)
-    scd_co2, scd_temperature, scd_relh = scd30.read_measurement()
 
-    data = json.dumps({
-        'temperature': hdc1080.temperature(),
-        'humidity': hdc1080.humidity(),
-        'pressure': lps22hb.read_pressure(),
-        'scd30': {
-            'co2': scd_co2,
-            'temperature': scd_temperature,
-            'relative_humidity': scd_relh
-        },
-        'input_voltage': ltc4015.get_input_voltage(),
-        'input_current': ltc4015.get_input_current(),
-        'system_voltage': ltc4015.get_system_voltage(),
-        'battery_voltage': ltc4015.get_battery_voltage(),
-        'battery_current': ltc4015.get_charge_current(),
-        'battery_percentage': ltc4015.get_estimated_battery_percentage()
-    })
+    data = json.dumps([
+        hdc1080.temperature(),
+        hdc1080.humidity(),
+        lps22hb.read_pressure(),
+        scd30.read_measurement()[0],
+        ltc4015.get_input_voltage(),
+        ltc4015.get_input_current(),
+        ltc4015.get_system_voltage(),
+        ltc4015.get_battery_voltage(),
+        ltc4015.get_charge_current(),
+        ltc4015.get_estimated_battery_percentage()
+    ])
 
 async def ltc4015_setup():
     ltc4015.initialize()
@@ -119,7 +128,7 @@ async def sensors_setup():
     # Output pins
     PWR_3V3_EN_PIN     = machine.Pin(0,  machine.Pin.OUT, value=0) # 0: enabled
     PWR_12V_EN_PIN     = machine.Pin(43, machine.Pin.OUT, value=0) # 0: disabled
-    I2C_BUS_PWR_EN_PIN = machine.Pin(1,  machine.Pin.OUT, value=1) # 0: disabled
+    I2C_BUS_PWR_EN_PIN = machine.Pin(1,  machine.Pin.OUT, value=1) # 1: enabled
     CAN_EN_PIN         = machine.Pin(44, machine.Pin.OUT, value=1) # 1: disabled
     SDI12_TX_EN_PIN    = machine.Pin(10, machine.Pin.OUT, value=0) # 0: disabled
     SDI12_RX_EN_PIN    = machine.Pin(9,  machine.Pin.OUT, value=0) # 0: disabled
@@ -127,7 +136,7 @@ async def sensors_setup():
     RS232_RX_EN_PIN    = machine.Pin(16, machine.Pin.OUT, value=1) # 1: disabled
     RS485_TX_EN_PIN    = machine.Pin(18, machine.Pin.OUT, value=0) # 0: disabled
     RS485_RX_EN_PIN    = machine.Pin(8,  machine.Pin.OUT, value=1) # 1: disabled
-    CO2_EN_PIN         = machine.Pin(13, machine.Pin.OUT, value=0) # 0: enabled
+    CO2_EN_PIN         = machine.Pin(13, machine.Pin.OUT, value=0, hold=True) # 0: enabled
     CO2_SCL_PIN        = machine.Pin(11)
 
     # Input pins
@@ -160,7 +169,7 @@ async def sensors_setup():
     lps22hb = LPS22HB(i2c)
     lps22hb.begin()
     scd30 = SCD30(co2_i2c, 0x61)
-    scd30.start_continous_measurement()
+    scd30.start_continous_measurement(ambient_pressure=int(lps22hb.read_pressure()))
 
     await ltc4015_setup()
     return True
@@ -202,7 +211,7 @@ async def send_data():
         ):
             raise Exception('Failure during coap context creation')
     wdt.feed()
-    
+
     if modem.coap_context_states[COAP_CTX_ID].connected:
         if not await modem.coap_send(
             ctx_id=COAP_CTX_ID,
@@ -212,16 +221,26 @@ async def send_data():
             data=data
         ):
             raise Exception('Failure during sending of data over coap')
+    
+    if modem.coap_context_states[COAP_CTX_ID].connected:
+        if not await modem.coap_context_close(COAP_CTX_ID):
+            raise Exception('Failure during closing of coap context')
 
 async def main():
     try:
         wdt.feed()
-        await modem.begin(debug_log=True)
+        await modem.begin()
 
-        if True:#machine.reset_cause() == machine.PWRON_RESET:
+        reset_cause = machine.reset_cause()
+        if reset_cause not in (
+            machine.DEEPSLEEP_RESET,
+            machine.WDT_RESET,
+            machine.HARD_RESET
+        ):
             if not ( # Relying on short-circuiting
-                await pdp_ctx_setup() and
-                await secure_profile_setup()
+                await setup_pdp_ctx() and
+                await setup_secure_profile() and
+                await setup_modem_power_saving()
             ):
                 raise Exception('Failure in setup of persistent configurations')
         wdt.feed()
@@ -241,7 +260,7 @@ async def main():
         print('Exception caught: ')
         sys.print_exception(err)
         print('=======\nHard resetting in 5sec...')
-        await asyncio.sleep(200)
+        time.sleep(5)
         machine.reset()
 
 asyncio.run(main())

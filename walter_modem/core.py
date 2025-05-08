@@ -666,6 +666,14 @@ class ModemCore:
         )
 
         return WalterModemState.OK
+    
+    async def _handle_sqn_coap_create(self, tx_stream, cmd, at_rsp):
+        if (ctx_info := at_rsp.split(b': ')[1]) and b',' in ctx_info:
+            ctx_id = int(ctx_info.split(b',')[0].decode())
+            self.coap_context_states[ctx_id].connected = True
+        else:
+            ctx_id = int(ctx_info.decode())
+            self.coap_context_states[ctx_id].connected = False
 
     async def _handle_sqn_http_rcv_answer_start(self, tx_stream, cmd, at_rsp):
         if self._http_current_profile >= ModemCore.MAX_HTTP_PROFILES or self._http_context_list[self._http_current_profile].state != WalterModemHttpContextState.GOT_RING:
@@ -1123,7 +1131,12 @@ class ModemCore:
         return WalterModemState.OK
 
     async def _handle_cereg(self, tx_stream, cmd, at_rsp):
-        self._reg_state = int(at_rsp.decode().split(':')[1].split(',')[0])
+        parts = at_rsp.decode().split(':')[1].split(',')
+        parts_len = len(parts)
+        if parts_len == 1 or parts_len > 2:
+            self._reg_state = int(parts[0])
+        elif parts_len == 2:
+            self._reg_state = int(parts[1])
         return WalterModemState.OK
     
     async def _handle_cgpaddr(self, tx_stream, cmd, at_rsp):
@@ -1228,6 +1241,7 @@ class ModemCore:
                 (b'+SQNCOAPRINGERR: ', self._handle_sqn_coap_ring_err),
                 (b'+SQNCOAPRING:', self._handle_sqn_coap_ring),
                 (b'+SQNCOAPRCV: ', self._handle_sqn_coap_rcv),
+                (b'+SQNCOAPCREATE: ', self._handle_sqn_coap_create),
                 # - HTTP
                 (b'<<<', self._handle_sqn_http_rcv_answer_start),
                 (b'+SQNHTTPRING: ', self._handle_sqn_http_ring),
@@ -1414,6 +1428,7 @@ class ModemCore:
         await self._run_cmd(at_cmd='AT+CFUN?', at_rsp=b'OK')
         await self._run_cmd(at_cmd='AT+CEREG?', at_rsp=b'OK')
         await self._run_cmd(at_cmd='AT+SQNSCFG?', at_rsp=b'OK')
+        await self._run_cmd(at_cmd='AT+SQNCOAPCREATE?', at_rsp=b'OK')
 
         rtc = RTC()
         packed_data = rtc.memory()
