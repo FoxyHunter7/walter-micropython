@@ -94,14 +94,23 @@ async def setup_modem_power_saving() -> bool:
 def walter_feels_data_readout():
     global data
 
-    while scd30.get_status_ready() != 1:
-        time.sleep_ms(200)
+    #scd30_co2 = None
+    #while scd30_co2 is None:
+    #    if scd30.get_status_ready() == 1:
+    #        co2, _, _ = scd30.read_measurement()
+    #        if co2 > 0:
+    #            scd30_co2 = co2
+    #            break
+    #    else:
+    #        time.sleep_ms(200)
+    
+
 
     data = json.dumps([
         hdc1080.temperature(),
         hdc1080.humidity(),
         lps22hb.read_pressure(),
-        scd30.read_measurement()[0],
+        scd30.get_co2(),
         ltc4015.get_input_voltage(),
         ltc4015.get_input_current(),
         ltc4015.get_system_voltage(),
@@ -109,6 +118,8 @@ def walter_feels_data_readout():
         ltc4015.get_charge_current(),
         ltc4015.get_estimated_battery_percentage()
     ])
+
+    print(data)
 
 async def ltc4015_setup():
     ltc4015.initialize()
@@ -168,8 +179,8 @@ async def sensors_setup():
     hdc1080.config(mode=1)
     lps22hb = LPS22HB(i2c)
     lps22hb.begin()
-    scd30 = SCD30(co2_i2c, 0x61)
-    scd30.start_continous_measurement(ambient_pressure=int(lps22hb.read_pressure()))
+    scd30 = SCD30(co2_i2c)
+    scd30.begin()
 
     await ltc4015_setup()
     return True
