@@ -93,18 +93,12 @@ async def setup_modem_power_saving() -> bool:
 
 def walter_feels_data_readout():
     global data
-
-    #scd30_co2 = None
-    #while scd30_co2 is None:
-    #    if scd30.get_status_ready() == 1:
-    #        co2, _, _ = scd30.read_measurement()
-    #        if co2 > 0:
-    #            scd30_co2 = co2
-    #            break
-    #    else:
-    #        time.sleep_ms(200)
     
-
+    co2 = 0
+    for _ in range(5):
+        co2 = scd30.get_co2()
+        if co2 > 0:
+            break
 
     data = json.dumps([
         hdc1080.temperature(),
@@ -119,7 +113,7 @@ def walter_feels_data_readout():
         ltc4015.get_estimated_battery_percentage()
     ])
 
-    print(data)
+    print(f'sensors readout: {data}')
 
 async def ltc4015_setup():
     ltc4015.initialize()

@@ -67,12 +67,13 @@ class LTC4015:
         new_val = old & ~bitmask
         self.write_word(sub_address, new_val)
 
-    def initialize(self):
+    def initialize(self, log_batt_and_cells=False):
         self.suspend_charging()
         self.get_battery_info()
 
-        print("Battery: ", self.get_battery_string())
-        print("Cells: ", self.cell_count)
+        if log_batt_and_cells:
+            print("Battery: ", self.get_battery_string())
+            print("Cells: ", self.cell_count)
 
     def get_qcount(self) -> int:
         return self.read_word(QCOUNT)
