@@ -34,6 +34,7 @@ class TestCoapContextCreate(
     async def async_setup(self):
         await modem.begin()
         await self.ensure_network_connection(modem_instance=modem)
+        modem.debug_log = True
 
     async def async_teardown(self):
         await modem._run_cmd(
@@ -158,6 +159,7 @@ class TestCoapContextClose(
     async def async_setup(self):
         await modem.begin() # Modem begin is ephermal
         await self.ensure_network_connection(modem_instance=modem)
+        modem.debug_log = True
 
         await modem._run_cmd(
             at_cmd='AT+SQNCOAPCREATE=0,"coap.me",5683',
@@ -211,6 +213,7 @@ class TestCoapSend(
     async def async_setup(self):
         await modem.begin() # Modem begin is ephermal
         await self.ensure_network_connection(modem_instance=modem)
+        modem.debug_log = True
 
         await modem._run_cmd(
             at_cmd='AT+SQNCOAPCREATE=0,"coap.me",5683',
@@ -345,7 +348,7 @@ class TestCoapSend(
 
     async def test_post_test_endpoint(self):
         await modem._run_cmd('AT+SQNCOAPOPT=0,0,11,"test"',b'OK')
-        await modem._run_cmd('AT+SQNCOAPOPT=0,0,12,0', b'OK')
+        await modem._run_cmd('AT+SQNCOAPOPT=0,0,12,"0"', b'OK')
         test_data = 'Hello from Walter Modem'
         modem.coap_context_states[0].rings.clear()
         self.assert_true(await modem.coap_send(
@@ -468,6 +471,7 @@ class TestCoapReceiveData(
     async def async_setup(self):
         await modem.begin() # Modem begin is ephermal
         await self.ensure_network_connection(modem_instance=modem)
+        modem.debug_log = True
     
         await modem._run_cmd(
             at_cmd='AT+SQNCOAPCREATE=0,"coap.me",5683',
