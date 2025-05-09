@@ -40,7 +40,8 @@ from .structs import (
     ModemMqttMessage,
     ModemCoapRing,
     ModemCoapContextState,
-    ModemCoapResponse
+    ModemCoapResponse,
+    ModemCoapOption
 )
 
 from .utils import (
@@ -674,6 +675,29 @@ class ModemCore:
         else:
             ctx_id = int(ctx_info.decode())
             self.coap_context_states[ctx_id].connected = False
+    
+    async def _handle_sqn_coap_options(self, tx_stream, cmd, at_rsp):
+        if cmd and cmd.at_cmd:
+            if (cmd.at_cmd.startswith(b'+SQNCOAPOPT=')
+            and cmd.at_cmd.split(b'=')[1].split(b',')[1] == b'1'):
+                ctx_id_str, option_str, value = at_rsp[13:].decode().split(',', 2)
+                cmd.rsp.coap_options = ModemCoapOption(
+                    ctx_id=int(ctx_id_str),
+                    option=int(option_str),
+                    value=value
+                )
+    
+    async def _handle_sqn_coap_rcvo(self, tx_stream, cmd, at_rsp):
+        ctx_id_str, option_str, value = at_rsp[14:].decode().split(',', 2)
+        coap_option = ModemCoapOption(
+            ctx_id=int(ctx_id_str),
+            option=int(option_str),
+            value=value
+        )
+        if isinstance(cmd.rsp.coap_options, list):
+            cmd.rsp.coap_options.append(coap_option)
+        else:
+            cmd.rsp.coap_options = [coap_option]
 
     async def _handle_sqn_http_rcv_answer_start(self, tx_stream, cmd, at_rsp):
         if self._http_current_profile >= ModemCore.MAX_HTTP_PROFILES or self._http_context_list[self._http_current_profile].state != WalterModemHttpContextState.GOT_RING:
@@ -1241,6 +1265,8 @@ class ModemCore:
                 (b'+SQNCOAPRING:', self._handle_sqn_coap_ring),
                 (b'+SQNCOAPRCV: ', self._handle_sqn_coap_rcv),
                 (b'+SQNCOAPCREATE: ', self._handle_sqn_coap_create),
+                (b'+SQNCOAPOPT: ', self._handle_sqn_coap_options),
+                (b'+SQNCOAPRCVO: ', self._handle_sqn_coap_rcvo),
                 # - HTTP
                 (b'<<<', self._handle_sqn_http_rcv_answer_start),
                 (b'+SQNHTTPRING: ', self._handle_sqn_http_ring),

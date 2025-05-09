@@ -472,3 +472,55 @@ class WalterModemCoapResponseCode(Enum):
     SERVICE_UNAVAILABLE = 503
     GATEWAY_TIMEOUT = 501
     PROXYING_NOT_SUPPORTED = 505
+
+class WalterModemCoapOptionAction(Enum):
+    SET = 0
+    DELETE = 1
+    READ = 2
+    EXTEND = 3
+
+class WalterModemCoapOption(Enum):
+    IF_MATCH = 1
+    URI_HOST = 3
+    ETAG = 4
+    IF_NONE_MATCH = 5
+    OBSERVE = 6
+    URI_PORT = 7
+    LOCATION_PATH = 8
+    URI_PATH = 11
+    CONTENT_TYPE = 12
+    MAX_AGE = 14
+    URI_QUERY = 15
+    ACCEPT = 17
+    TOKEN = 19
+    LOCATION_QUERY = 20
+    BLOCK2 = 23
+    BLOCK1 = 27
+    SIZE2 = 28
+    PROXY_URI = 35
+    SIZE1 = 60
+
+class WalterModemCoapContentType(Enum):
+    TEXT_PLAIN = '0'
+    TEXT_XML = '1'
+    TEXT_CSV = '2'
+    TEXT_HTML = '3'
+    IMAGE_GIF = '21'
+    IMAGE_JPEG = '22'
+    IMAGE_PNG = '23'
+    IMAGE_TIFF = '24'
+    AUDIO_RAW = '25'
+    VIDEO_RAW = '26'
+    APPLICATION_LINK_FORMAT = '40'
+    APPLICATION_XML = '41'
+    APPLICATION_OCTET_STREAM = '42'
+    APPLICATION_RDF_XML = '43'
+    APPLICATION_SOAP_XML = '44'
+    APPLICATION_ATOM_XML = '45'
+    APPLICATION_XMPP_XML = '46'
+    APPLICATION_EXI = '47'
+    APPLICATION_FASTINFOSET = '48'
+    APPLICATION_SOAP_FASTINFOSET = '49'
+    APPLICATION_JSON = '50'
+    APPLICATION_X_OBIX_BINARY = '51'
+    APPLICATION_CBOR = '60'

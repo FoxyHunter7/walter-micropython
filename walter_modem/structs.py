@@ -22,7 +22,8 @@ from .enums import (
     WalterModemCoapReqResp,
     WalterModemCoapType,
     WalterModemCoapMethod,
-    WalterModemCoapResponseCode
+    WalterModemCoapResponseCode,
+    WalterModemCoapOption
 )
 
 
@@ -220,7 +221,12 @@ class ModemRsp:
 
         self.cell_information: ModemCellInformation | None = None
 
-        self.coap_response: ModemCoapResponse | None = None
+        self.coap_rcv_response: ModemCoapResponse | None = None
+        """The CoAP response from receiving ring data (coap_receive_data)"""
+
+        self.coap_rcv_options: ModemCoapOption | list[ModemCoapOption] | None = None
+        """The CoAP options either from receiving a ring options (coap_receive_options)
+        or from the READ action in coap_set_options"""
 
 class ModemMqttMessage:
     def __init__(self, topic, length, qos, message_id = None, payload = None):
@@ -456,3 +462,9 @@ class ModemCoapResponse:
         self.rsp_code: WalterModemCoapResponseCode | None = rsp_code
         self.length: int = length
         self.payload: bytearray = payload
+
+class ModemCoapOption:
+    def __init__(self, ctx_id, option, value):
+        self.ctx_id: int = ctx_id,
+        self.option: WalterModemCoapOption = option,
+        self.value: str = value
