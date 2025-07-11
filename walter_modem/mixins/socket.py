@@ -45,7 +45,9 @@ class WalterModemRai(Enum):
 
 class ModemSocketContextState:
     def __init__(self):
-        self.connected: bool = False
+        self.connected = False
+        self.configured = False
+        self.accept_any_remote = WalterModemSocketAcceptAnyRemote.DISABLED
 
 class ModemSocket:
     def __init__(self, id):
@@ -67,6 +69,8 @@ class ModemSocket:
 
 _SOCKET_MIN_CTX_ID = const(1)
 _SOCKET_MAX_CTX_ID = const(6)
+_SOCKET_MIN_BYTES_LEN = const(1)
+_SOCKET_MAX_BYTES_LEN = const(16777216)
 _PDP_DEFAULT_CTX_ID = const(1)
 _PDP_MIN_CTX_ID = const(1)
 _PDP_MAX_CTX_ID = const(8)
@@ -107,33 +111,61 @@ class SocketMixin(ModemCore):
 
     #region PublicMethods
 
-    # Deprecated aliases, to be removed in a later release
-
-    async def create_socket(self, *args, **kwargs):
-        """DEPRECATED; use `socket_create()` instead"""
-        return await self.socket_create(*args, **kwargs)
-    
-    async def connect_socket(self, *args, **kwargs):
-        """DEPRECATED; use `socket_connect()` instead"""
-        return await self.socket_connect(*args, **kwargs)
-    
-    async def close_socket(self, *args, **kwargs):
-        """DEPRECATED; use `socket_close()` instead"""
-        return await self.socket_close(*args, **kwargs)
-
-    # ---
-
     async def socket_close(self,
         ctx_id: int,
         rsp: ModemRsp = None
     ) -> bool:
         if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
             if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
 
         return await self._run_cmd(
             rsp=rsp,
             at_cmd=f'AT+SQNSH={ctx_id}',
             at_rsp=b'OK'
+        )
+
+    async def socket_send(self,
+        ctx_id: int,
+        data: bytes | bytearray | str | None,
+        length: int = None,
+        rai: int = WalterModemRai.NO_INFO,
+        remote_addr: str = None,
+        remote_port: int = None,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+        
+        if self.socket_context_states[ctx_id].accept_any_remote != WalterModemSocketAcceptAnyRemote.REMOTE_RX_AND_TX:
+            if remote_addr is not None or remote_port is not None:
+                if rsp: rsp.result = WalterModemState.ERROR
+                return False
+        
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        elif data is not None and not isinstance(data, (bytes, bytearray)):
+            if rsp: rsp.result = WalterModemState.ERROR
+            return False
+        
+        if length is None:
+            length = 0 if data is None else len(data)
+        
+        if length < _SOCKET_MIN_BYTES_LEN or _SOCKET_MAX_BYTES_LEN < length:
+            if rsp: rsp.result = WalterModemState.ERROR
+            return False
+
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd='AT+SQNSSENDEXT={},{},{},{},{}'.format(
+                ctx_id, length, rai,
+                modem_string(remote_addr) if remote_addr is not None else '',
+                remote_port
+            ),
+            at_rsp=b'OK',
+            cmd_type=WalterModemCmdType.DATA_TX_WAIT,
+            data=data
         )
 
     async def socket_create(self,
@@ -224,28 +256,6 @@ class SocketMixin(ModemCore):
             at_rsp=b'OK',
             complete_handler=complete_handler,
             complete_handler_arg=socket
-        )
-    
-    async def socket_send(self,
-        data,
-        socket_id: int = -1,
-        rai: int = WalterModemRai.NO_INFO,
-        rsp: ModemRsp = None
-    ) -> bool:
-        try:
-            _socket = self._socket if socket_id == -1 else self._socket_list[socket_id - 1]
-        except Exception:
-            if rsp: rsp.result = WalterModemState.NO_SUCH_SOCKET
-            return False
-        
-        self._socket = _socket
-
-        return await self._run_cmd(
-            rsp=rsp,
-            at_cmd=f'AT+SQNSSENDEXT={_socket.id},{len(data)},{rai}',
-            at_rsp=b'OK',
-            cmd_type=WalterModemCmdType.DATA_TX_WAIT,
-            data=data
         )
 
     #endregion

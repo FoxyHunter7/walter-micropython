@@ -1536,15 +1536,6 @@ class Modem():
 # SocketMixin
 # ---
 
-    async def create_socket(self, *args, **kwargs):
-        """DEPRECATED; use `socket_create()` instead"""
-    
-    async def connect_socket(self, *args, **kwargs):
-        """DEPRECATED; use `socket_connect()` instead"""
-    
-    async def close_socket(self, *args, **kwargs):
-        """DEPRECATED; use `socket_close()` instead"""
-
     async def socket_close(self,
         ctx_id: int,
         rsp: ModemRsp | None = None
@@ -1560,7 +1551,58 @@ class Modem():
 
         Args:
             ctx_id (int):
-                Context profile identifier of the socket to close (1-6).
+                Context profile identifier (1-6).
+            rsp (ModemRsp, optional):
+                Reference to a modem response instance.
+                Defaults to None.
+
+        Returns:
+            bool: True on success, False on failure
+        """
+
+    async def socket_send(self,
+        ctx_id: int,
+        data: bytes | bytearray | str | None,
+        length: int = None,
+        rai: int = WalterModemRai.NO_INFO,
+        remote_addr: str = None,
+        remote_port: int = None,
+        rsp: ModemRsp = None
+    ) -> bool:
+        """Provided by the SocketMixin
+
+        ---
+
+        Sends data over a socket connection.
+
+        If the socket is configured with WalterModemSocketAcceptAnyRemote
+        set to REMOTE_RX_AND_TX it is possible to set remote_addr & remote_port.
+        Whilst technically possible it is still recommended to set these values
+        using `socket_dial` instead.
+
+        Args:
+            ctx_id (int):
+                Context profile identifier (1-6).
+            data (bytes | bytearray | str):
+                The data to send
+            length (int, optional):
+                Length of the payload (auto-calculated if not provided).
+                Defaults to None.
+            rai (int, optional):
+                The release assistance informatio.
+                Defaults to WalterModemRai.NO_INFO.
+            remote_addr (str, optional):
+                Address of the remote host.
+                If not set, its value is inferred from `socket_dial`.
+                Can only be set if the socket is configured with WalterModemSocketAcceptAnyRemote
+                set to REMOTE_RX_AND_TX.
+                Defaults to None.
+            remote_port (int, optional):
+                Port of the remote host.
+                If not set, its value is inferred from `socket_dial`.
+                Can only be set if the socket is configured with WalterModemSocketAcceptAnyRemote
+                set to REMOTE_RX_AND_TX.
+                Defaults to None
             rsp (ModemRsp, optional):
                 Reference to a modem response instance.
                 Defaults to None.
@@ -1651,34 +1693,6 @@ class Modem():
             bool: True on success, False on failure
         """
 
-    async def socket_send(self,
-        data,
-        socket_id: int = -1,
-        rai: WalterModemRai = WalterModemRai.NO_INFO,
-        rsp: ModemRsp | None = None
-    ) -> bool:
-        """Provided by the SocketMixin
-
-        ---
-
-        Sends data over a socket.
-
-        Args:
-            data (bytes | bytearray | str):
-                The data to send
-            socket_id (int, optional):
-                The id of the socket to close or -1 to re-use the last one.
-                Defaults to -1.
-            rai (int, optional):
-                The release assistance informatio.
-                Defaults to WalterModemRai.NO_INFO.
-            rsp (ModemRsp, optional):
-                Reference to a modem response instance.
-                Defaults to None.
-
-        Returns:
-            bool: True on success, False on failure
-        """
 # ---
 # TLSCertsMixin
 # ---
