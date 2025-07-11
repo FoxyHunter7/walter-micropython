@@ -43,6 +43,10 @@ class WalterModemRai(Enum):
 #endregion
 #region Structs
 
+class ModemSocketContextState:
+    def __init__(self):
+        self.connected: bool = False
+
 class ModemSocket:
     def __init__(self, id):
         self.state = WalterModemSocketState.FREE
@@ -77,6 +81,11 @@ class SocketMixin(ModemCore):
 
     def __init__(self, *args, **kwargs):
         def init():
+            self.socket_context_states = tuple(
+                ModemSocketContextState()
+                for _ in range(_SOCKET_MIN_CTX_ID, _SOCKET_MAX_CTX_ID + 1)
+            )
+
             self._socket_list = [ModemSocket(idx + 1) for idx in range(_SOCKET_MAX_CTX_ID + 1)]
             """The list of sockets"""
 
@@ -85,7 +94,7 @@ class SocketMixin(ModemCore):
 
             self.__queue_rsp_rsp_handlers = (
                 self.__queue_rsp_rsp_handlers + (
-                    (b'+SQNSH: ', self.__handle_sh),
+                    (b'+SQNSH: ', self._handle_socket_closed),
                     (b'+SQNSCFG: ', self.__handle_sqnscfg),
                 )
             )
@@ -113,6 +122,19 @@ class SocketMixin(ModemCore):
         return await self.socket_close(*args, **kwargs)
 
     # ---
+
+    async def socket_close(self,
+        ctx_id: int,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd=f'AT+SQNSH={ctx_id}',
+            at_rsp=b'OK'
+        )
 
     async def socket_create(self,
         pdp_context_id: int = _PDP_DEFAULT_CTX_ID,
@@ -204,31 +226,6 @@ class SocketMixin(ModemCore):
             complete_handler_arg=socket
         )
     
-    async def socket_close(self,
-        socket_id: int = -1,
-        rsp: ModemRsp = None
-    ) -> bool:
-        try:
-            socket = self._socket if socket_id == -1 else self._socket_list[socket_id - 1]
-        except Exception:
-            if rsp: rsp.result = WalterModemState.NO_SUCH_SOCKET
-            return False
-        
-        self._socket = socket
-
-        async def complete_handler(result, rsp, complete_handler_arg):
-            sock = complete_handler_arg
-            if result == WalterModemState.OK:
-                sock.state = WalterModemSocketState.FREE
-
-        return await self._run_cmd(
-            rsp=rsp,
-            at_cmd=f'AT+SQNSH={socket.id}',
-            at_rsp=b'OK',
-            complete_handler=complete_handler,
-            complete_handler_arg=socket
-        )
-    
     async def socket_send(self,
         data,
         socket_id: int = -1,
@@ -261,15 +258,9 @@ class SocketMixin(ModemCore):
     #endregion
     #region QueueResponseHandlers
 
-    async def __handle_sh(self, tx_stream, cmd, at_rsp):
-        socket_id = int(at_rsp[len('+SQNSH: '):].decode())
-        try:
-            _socket = self._socket_list[socket_id - 1]
-        except Exception:
-            return None
-
-        self._socket = _socket
-        _socket.state = WalterModemSocketState.FREE
+    async def _handle_socket_closed(self, tx_stream, cmd, at_rsp):
+        ctx_id = int(at_rsp.split(b':').decode())
+        self.socket_context_states[ctx_id].connected = False
 
         return WalterModemState.OK
 

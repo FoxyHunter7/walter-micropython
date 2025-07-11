@@ -190,7 +190,7 @@ async def lte_transmit(socket_id: int, address: str, port: int, buffer: bytearra
         return False
     
     if not await modem.socket_close(
-        socket_id=socket_id
+        ctx_id=socket_id
     ):
         print('  - Failed to close UDP socket')
         return False

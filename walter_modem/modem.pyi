@@ -1545,6 +1545,30 @@ class Modem():
     async def close_socket(self, *args, **kwargs):
         """DEPRECATED; use `socket_close()` instead"""
 
+    async def socket_close(self,
+        ctx_id: int,
+        rsp: ModemRsp | None = None
+    ) -> bool:
+        """Provided by the SocketMixin
+
+        ---    
+    
+        Closes a socket connection.
+
+        Socket connection can only be closed in suspended mode.
+        Attempting to close an active socket will result in an error.      
+
+        Args:
+            ctx_id (int):
+                Context profile identifier of the socket to close (1-6).
+            rsp (ModemRsp, optional):
+                Reference to a modem response instance.
+                Defaults to None.
+
+        Returns:
+            bool: True on success, False on failure
+        """
+
     async def socket_create(self,
         pdp_context_id: int = 1,
         mtu: int = 300,
@@ -1619,29 +1643,6 @@ class Modem():
             accept_any_remote (WalterModemSocketAcceptAnyRemote, optional):
                 How to accept remote UDP packets.
                 Defaults to WalterModemSocketAcceptAnyRemote.DISABLED.
-            rsp (ModemRsp, optional):
-                Reference to a modem response instance.
-                Defaults to None.
-
-        Returns:
-            bool: True on success, False on failure
-        """
-
-    async def socket_close(self,
-        socket_id: int = -1,
-        rsp: ModemRsp | None = None
-    ) -> bool:
-        """Provided by the SocketMixin
-
-        ---    
-    
-        Closes a socket. Sockets can only be closed when suspended; 
-        active connections cannot be closed.        
-
-        Args:
-            socket_id (int, optional):
-                The id of the socket to close or -1 to re-use the last one.
-                Defaults to -1.
             rsp (ModemRsp, optional):
                 Reference to a modem response instance.
                 Defaults to None.
