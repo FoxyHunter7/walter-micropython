@@ -47,7 +47,22 @@ class ModemSocketContextState:
     def __init__(self):
         self.connected = False
         self.configured = False
+        self.rings: list[ModemSocketRing] = []
         self.accept_any_remote = WalterModemSocketAcceptAnyRemote.DISABLED
+
+class ModemSocketRing:
+    def __init__(self, ctx_id, length = None, data = None):
+        self.ctx_id: int = ctx_id
+        self.length: int | None = length
+        self.data = data
+
+class ModemSocketResponse:
+    def __init__(self, ctx_id, max_bytes, payload, addr = None, port = None):
+        self.ctx_id: int = ctx_id
+        self.max_bytes: int = max_bytes
+        self.addr: str | None = addr
+        self.port: int | None = port
+        self.payload: bytearray = payload
 
 class ModemSocket:
     def __init__(self, id):
@@ -69,8 +84,11 @@ class ModemSocket:
 
 _SOCKET_MIN_CTX_ID = const(1)
 _SOCKET_MAX_CTX_ID = const(6)
-_SOCKET_MIN_BYTES_LEN = const(1)
-_SOCKET_MAX_BYTES_LEN = const(16777216)
+_SOCKET_SEND_MIN_BYTES_LEN = const(1)
+_SOCKET_SEND_MAX_BYTES_LEN = const(16777216)
+_SOCKET_RECV_MIN_BYTES_LEN = const(1)
+_SOCKET_RECV_MAX_BYTES_LEN = const(1500)
+
 _PDP_DEFAULT_CTX_ID = const(1)
 _PDP_MIN_CTX_ID = const(1)
 _PDP_MAX_CTX_ID = const(8)
@@ -81,6 +99,7 @@ _PDP_MAX_CTX_ID = const(8)
 class SocketMixin(ModemCore):
     MODEM_RSP_FIELDS = (
         ('socket_id', None),
+        ('socket_rcv_response', None),
     )
 
     def __init__(self, *args, **kwargs):
@@ -99,6 +118,8 @@ class SocketMixin(ModemCore):
             self.__queue_rsp_rsp_handlers = (
                 self.__queue_rsp_rsp_handlers + (
                     (b'+SQNSH: ', self._handle_socket_closed),
+                    (b'+SQNSRING: ', self._handle_socket_ring),
+                    (b'+SQNSRECV: ', self._handle_socket_rcv),
                     (b'+SQNSCFG: ', self.__handle_sqnscfg),
                 )
             )
@@ -152,7 +173,7 @@ class SocketMixin(ModemCore):
         if length is None:
             length = 0 if data is None else len(data)
         
-        if length < _SOCKET_MIN_BYTES_LEN or _SOCKET_MAX_BYTES_LEN < length:
+        if length < _SOCKET_SEND_MIN_BYTES_LEN or _SOCKET_SEND_MAX_BYTES_LEN < length:
             if rsp: rsp.result = WalterModemState.ERROR
             return False
 
@@ -167,6 +188,33 @@ class SocketMixin(ModemCore):
             cmd_type=WalterModemCmdType.DATA_TX_WAIT,
             data=data
         )
+
+    async def socket_receive_data(self,
+        ctx_id: int,
+        length: int,
+        max_bytes: int,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or  _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+        
+        if max_bytes < _SOCKET_RECV_MIN_BYTES_LEN or _SOCKET_RECV_MAX_BYTES_LEN < max_bytes:
+            if rsp: rsp.result = WalterModemState.ERROR
+            return False
+        
+        if length < 0:
+            if rsp: rsp.result = WalterModemState.ERROR
+            return False
+        
+        self.__parser_data.raw_chunk_size = min(length, max_bytes)
+
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd=f'AT+SQNSRECV={ctx_id},{max_bytes}',
+            at_rsp=b'OK'
+        )
+        
 
     async def socket_create(self,
         pdp_context_id: int = _PDP_DEFAULT_CTX_ID,
@@ -201,7 +249,7 @@ class SocketMixin(ModemCore):
 
         async def complete_handler(result, rsp, complete_handler_arg):
             sock = complete_handler_arg
-            rsp.type = WalterModemRspType.SOCKET_ID
+            rsp.type = WalterModemRspType.SOCKET
             rsp.socket_id = sock.id
 
             if result == WalterModemState.OK:
@@ -273,6 +321,41 @@ class SocketMixin(ModemCore):
         self.socket_context_states[ctx_id].connected = False
 
         return WalterModemState.OK
+    
+    async def _handle_socket_ring(self, tx_stream, cmd, at_rsp):
+        parts = at_rsp.split(b': ', 1)[1].split(b',')
+        ctx_id = int(parts[0].decode())
+
+        self.socket_context_states[ctx_id].rings.append(ModemSocketRing(
+            ctx_id=ctx_id,
+            length=int(parts[1].decode()) if len(parts) >= 2 else None,
+            data=parts[2] if len(parts) == 3 else None
+        ))
+
+        return WalterModemState.OK
+    
+    async def _handle_socket_rcv(self, tx_stream, cmd, at_rsp):
+        header, payload = at_rsp.split(b': ', 1)[1].split(b'\r')
+        header = header.split(b',')
+
+        ctx_id, max_bytes = int(header[0].decode()), int(header[1].decode())
+        addr = None
+        port = None
+        if len(header) == 4:
+            addr = header[2].decode()
+            port = int(header[3].decode())
+        
+        cmd.rsp.type = WalterModemRspType.SOCKET
+        cmd.rsp.socket_rcv_response = ModemSocketResponse(
+            ctx_id=ctx_id,
+            max_bytes=max_bytes,
+            payload=payload,
+            addr=addr,
+            port=port
+        )
+
+        return WalterModemState.OK
+
 
     async def __handle_sqnscfg(self, tx_stream, cmd, at_rsp):
         conn_id, cid, pkt_sz, max_to, conn_to, tx_to = map(int, at_rsp.split(b': ')[1].split(b','))

@@ -483,7 +483,7 @@ class CoapMixin(ModemCore):
         return WalterModemState.OK
     
     async def __handle_coap_rcv(self, tx_stream, cmd, at_rsp):
-        header, payload = at_rsp.split(b': ')[1].split(b'\r')
+        header, payload = at_rsp.split(b': ', 1)[1].split(b'\r')
         header = header.split(b',')
 
         ctx_id, msg_id = int(header[0].decode()), int(header[1].decode())
