@@ -98,6 +98,9 @@ _SOCKET_RECV_MAX_BYTES_LEN = const(1500)
 _TLS_MIN_CTX_ID = const(1)
 _TLS_MAX_CTX_ID = const(6)
 
+_PDP_MIN_CTX_ID = const(0)
+_PDP_MAC_CTX_ID = const(6)
+
 #endregion
 #region MixinClass
 
@@ -250,6 +253,32 @@ class SocketMixin(ModemCore):
             rsp=rsp,
             at_cmd='AT+SQNSCFGEXT={},{},{},{},{},{}'.format(
                 ctx_id, ring_mode, recv_mode, keepalive, listen_mode, send_mode
+            ),
+            at_rsp=b'OK'
+        )
+    
+    async def socket_config(self,
+        ctx_id: int,
+        pdp_ctx_id: int,
+        mtu: int = 300,
+        exchange_timeout: int = 90,
+        connection_timeout: int = 60,
+        send_delay_ms: int = 5000,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+
+        if pdp_ctx_id < _PDP_MIN_CTX_ID or _PDP_MAC_CTX_ID < pdp_ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PDP_CONTEXT
+            return False
+        
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd='AT+SQNSCFG={},{},{},{},{},{}'.format(
+                ctx_id, pdp_ctx_id, mtu, exchange_timeout,
+                connection_timeout * 10, send_delay_ms // 100
             ),
             at_rsp=b'OK'
         )
