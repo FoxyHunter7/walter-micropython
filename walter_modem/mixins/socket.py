@@ -85,6 +85,14 @@ class ModemSocketResponse:
         self.port: int | None = port
         self.payload: bytearray = payload
 
+class ModemSocketInformation:
+    def __init__(self, ctx_id, sent, received, buff_in, ack_waiting):
+        self.ctx_id: int = ctx_id
+        self.sent: int = sent
+        self.received: int = received
+        self.buff_in: int = buff_in
+        self.ack_waiting: int = ack_waiting
+
 #endregion
 #region Constants
 
@@ -107,6 +115,7 @@ _PDP_MAC_CTX_ID = const(6)
 class SocketMixin(ModemCore):
     MODEM_RSP_FIELDS = (
         ('socket_rcv_response', None),
+        ('socket_information', None)
     )
 
     def __init__(self, *args, **kwargs):
@@ -305,6 +314,20 @@ class SocketMixin(ModemCore):
             at_rsp=b'OK' # TODO: test if I always get okay, or if I get an URC, ... ... 
         )
     
+    async def socket_information(self,
+        ctx_id: int,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+        
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd=f'AT+SQNSI={ctx_id}',
+            at_rsp=b'OK'
+        )
+    
     async def socket_accept(self,
         ctx_id: int,
         command_mode: bool = True,
@@ -372,6 +395,18 @@ class SocketMixin(ModemCore):
         )
 
         return WalterModemState.OK
+    
+    async def _handle_socket_information(self, tx_stream, cmd, at_rsp):
+        parts = at_rsp.split(b': ')[1].split(b',')
+        ctx_id, sent, received, buff_in, ack_waiting = [int(p.decode()) for p in parts]
+
+        cmd.rsp.socket_information = ModemSocketInformation(
+            ctx_id=ctx_id,
+            sent=sent,
+            received=received,
+            buff_in=buff_in,
+            ack_waiting=ack_waiting
+        )
 
     #endregion
 #endregion
