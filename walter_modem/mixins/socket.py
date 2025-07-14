@@ -41,6 +41,26 @@ class WalterModemRai(Enum):
     NO_FURTHER_RXTX_EXPECTED = 1
     ONLY_SINGLE_RXTX_EXPECTED = 2
 
+class WalterModemSocketRingMode(Enum):
+    NORMAL = 0
+    """Only ctx_id"""
+    DATA_AMOUNT = 1
+    """ctx_id & data length"""
+    DATA_VIEW = 2
+    """ctx_id, data length & data"""
+
+class WalterModemSocketRecvMode(Enum):
+    TEXT_OR_RAW = 0
+    HEX_BYTES_SEQUENCE = 1
+
+class WalterModemSocketListenMode(Enum):
+    DISABLED = 0
+    ENABLED = 1
+
+class WalterModemSocketSendMode(Enum):
+    TEXT_OR_RAW = 0
+    HEX_BYTES_SEQUENCE = 1
+
 #endregion
 #region Structs
 
@@ -210,6 +230,27 @@ class SocketMixin(ModemCore):
         return await self._run_cmd(
             rsp=rsp,
             at_cmd=f'AT+SQNSSCFG={ctx_id},{modem_bool(enable)},{secure_profile_id}',
+            at_rsp=b'OK'
+        )
+    
+    async def socket_config_extended(self,
+        ctx_id: int,
+        ring_mode: int = WalterModemSocketRingMode.DATA_AMOUNT,
+        recv_mode: int = WalterModemSocketRecvMode.TEXT_OR_RAW,
+        keepalive: int = 60,
+        listen_mode: int = WalterModemSocketListenMode.DISABLED,
+        send_mode: int = WalterModemSocketSendMode.TEXT_OR_RAW,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+        
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd='AT+SQNSCFGEXT={},{},{},{},{},{}'.format(
+                ctx_id, ring_mode, recv_mode, keepalive, listen_mode, send_mode
+            ),
             at_rsp=b'OK'
         )
     
