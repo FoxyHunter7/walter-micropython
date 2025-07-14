@@ -1657,7 +1657,7 @@ class Modem():
         remote_port: int,
         local_port: int = 0,
         socket_id: int = -1,
-        protocol: WalterModemSocketProto = WalterModemSocketProto.UDP,
+        protocol: WalterModemSocketProtocol = WalterModemSocketProtocol.UDP,
         accept_any_remote: WalterModemSocketAcceptAnyRemote = WalterModemSocketAcceptAnyRemote.DISABLED,
         rsp: ModemRsp | None = None
     ) -> bool:

@@ -27,7 +27,7 @@ class WalterModemSocketState(Enum):
     LISTENING = 5
     CLOSED = 6
 
-class WalterModemSocketProto(Enum):
+class WalterModemSocketProtocol(Enum):
     TCP = 0
     UDP = 1
 
@@ -281,6 +281,28 @@ class SocketMixin(ModemCore):
                 connection_timeout * 10, send_delay_ms // 100
             ),
             at_rsp=b'OK'
+        )
+    
+    async def socket_dial(self,
+        ctx_id: int,
+        remote_addr: str,
+        remote_port: int,
+        local_port: int = 0,
+        protocol: int = WalterModemSocketProtocol.UDP,
+        accept_any_remote: int = WalterModemSocketAcceptAnyRemote.DISABLED,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+        
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd='AT+SQNSD={},{},{},{},0,{},1,{},0'.format(
+                ctx_id, protocol, remote_port, modem_string(remote_addr),
+                local_port, accept_any_remote
+            ),
+            at_rsp=b'OK' # TODO: test if I always get okay, or if I get an URC, ... ... 
         )
     
     async def socket_accept(self,
