@@ -212,6 +212,22 @@ class SocketMixin(ModemCore):
             at_cmd=f'AT+SQNSSCFG={ctx_id},{modem_bool(enable)},{secure_profile_id}',
             at_rsp=b'OK'
         )
+    
+    async def socket_accept(self,
+        ctx_id: int,
+        command_mode: bool = True,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+        
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd=f'AT+SQNSA={ctx_id},{modem_bool(command_mode)}',
+            at_rsp=b'OK',
+            cmd_type=WalterModemCmdType.DATA_TX_WAIT
+        )
 
     #endregion
     #region PrivateMethods
