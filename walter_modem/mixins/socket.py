@@ -18,15 +18,6 @@ from ..utils import (
 
 #region Enums
 
-class WalterModemSocketState(Enum):
-    FREE = 0
-    RESERVED = 1
-    CREATED = 2
-    CONFIGURED = 3
-    OPENED = 4
-    LISTENING = 5
-    CLOSED = 6
-
 class WalterModemSocketProtocol(Enum):
     TCP = 0
     UDP = 1
@@ -61,6 +52,20 @@ class WalterModemSocketSendMode(Enum):
     TEXT_OR_RAW = 0
     HEX_BYTES_SEQUENCE = 1
 
+class WalterModemSocketListenState(Enum):
+    CLOSE = 0
+    IPV4 = 1
+    IPV6 = 2
+
+class WalterModemSocketState(Enum):
+    CLOSED = 0
+    ACTIVE_DATA = 1
+    SUSPENDED = 2
+    SUSPENDED_PENDING_DATA = 3
+    LISTENING = 4
+    INCOMING_CONNECTION = 5
+    OPENING = 6
+
 #endregion
 #region Structs
 
@@ -93,6 +98,16 @@ class ModemSocketInformation:
         self.buff_in: int = buff_in
         self.ack_waiting: int = ack_waiting
 
+class ModemSocketStatus:
+    def __init__(self, ctx_id, state, local_addr, local_port, remote_addr, remote_port, protocol):
+        self.ctx_id: int = ctx_id
+        self.state: WalterModemSocketState = state,
+        self.local_addr: str = local_addr,
+        self.local_port: int = local_port,
+        self.remote_addr: str = remote_addr,
+        self.remote_port: int = remote_port,
+        self.protocol: WalterModemSocketProtocol = protocol
+
 #endregion
 #region Constants
 
@@ -115,7 +130,8 @@ _PDP_MAC_CTX_ID = const(6)
 class SocketMixin(ModemCore):
     MODEM_RSP_FIELDS = (
         ('socket_rcv_response', None),
-        ('socket_information', None)
+        ('socket_information', None),
+        ('socket_status', None)
     )
 
     def __init__(self, *args, **kwargs):
@@ -328,6 +344,63 @@ class SocketMixin(ModemCore):
             at_rsp=b'OK'
         )
     
+    async def socket_listen(self,
+        ctx_id: int,
+        protocol: int = WalterModemSocketProtocol.TCP,
+        listen_state: int = WalterModemSocketListenState.IPV4,
+        listen_port: int = 0,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+        
+        if protocol == WalterModemSocketProtocol.TCP:
+            return await self._run_cmd(
+                rsp=rsp,
+                at_cmd=f'AT+SQNSL={ctx_id},{listen_state},{listen_port}',
+                at_rsp=b'OK',
+                cmd_type=WalterModemCmdType.DATA_TX_WAIT
+            )
+        elif protocol == WalterModemSocketProtocol.UDP:
+            return await self._run_cmd(
+                rsp=rsp,
+                at_cmd=f'AT+SQNSLUDP={ctx_id},{listen_state},{listen_port}',
+                at_rsp=b'OK',
+                cmd_type=WalterModemCmdType.DATA_TX_WAIT
+            )
+        else:
+            if rsp: rsp.result = WalterModemState.ERROR
+            return False
+    
+    async def socket_restore(self,
+        ctx_id: int,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+        
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd=f'AT+SQNSO={ctx_id}',
+            at_rsp=b'OK'
+        )
+    
+    async def socket_status(self,
+        ctx_id: int,
+        rsp: ModemRsp = None
+    ) -> bool:
+        if ctx_id < _SOCKET_MIN_CTX_ID or _SOCKET_MAX_CTX_ID < ctx_id:
+            if rsp: rsp.result = WalterModemState.NO_SUCH_PROFILE
+            return False
+        
+        return await self._run_cmd(
+            rsp=rsp,
+            at_cmd=f'AT+SQNSS={ctx_id}',
+            at_rsp=b'OK'
+        )
+    
     async def socket_accept(self,
         ctx_id: int,
         command_mode: bool = True,
@@ -400,12 +473,28 @@ class SocketMixin(ModemCore):
         parts = at_rsp.split(b': ')[1].split(b',')
         ctx_id, sent, received, buff_in, ack_waiting = [int(p.decode()) for p in parts]
 
+        cmd.rsp.tye = WalterModemRspType.SOCKET
         cmd.rsp.socket_information = ModemSocketInformation(
             ctx_id=ctx_id,
             sent=sent,
             received=received,
             buff_in=buff_in,
             ack_waiting=ack_waiting
+        )
+    
+    async def _handle_scoket_status(self, tx_stream, cmd, at_rsp):
+        parts = at_rsp.split(b': ', 1)[1].split(b',')
+        ctx_id, state, locIP, locPort, remIP, remPort, txProt = [p.decode() for p in parts]
+
+        cmd.rsp.typ = WalterModemRspType.SOCKET
+        cmd.response.socket_status = ModemSocketStatus(
+            ctx_id=int(ctx_id),
+            state=int(state),
+            local_addr=locIP,
+            local_port=int(locPort),
+            remote_addr=remIP,
+            remote_port=int(remPort),
+            protocol=int(txProt)
         )
 
     #endregion
