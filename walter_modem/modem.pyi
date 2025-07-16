@@ -1536,6 +1536,87 @@ class Modem():
 # SocketMixin
 # ---
 
+    async def socket_config(self,
+        ctx_id: int,
+        pdp_ctx_id: int,
+        mtu: int = 300,
+        exchange_timeout: int = 90,
+        connection_timeout: int = 60,
+        send_delay_ms: int = 5000,
+        rsp: ModemRsp = None
+    ) -> bool:
+        """Provided by the SocketMixin
+
+        ---
+
+        Configure a socket, socket configuration is reboot persistent.
+
+        Args:
+            ctx_id (int):
+                Context identifier (1-6)
+            pdp_ctx_id (int):
+                PDP Context identifier (0-6)
+            mtu (int, optional):
+                The maximum transmission unit used by the socket.
+                Defaults to 300.
+            exchange_timeout (int, optional):
+                The maximum number of seconds this socket can be inactive.
+                Defaults to 90.
+            connection_timeout (int, optional):
+                The maximum number of seconds this socket can try to connect.
+                Defaults to 60.
+            send_delay_ms (int, optional):
+                The number of milliseconds send delay.
+                Defaults to 5000.
+            rsp (ModemRsp, optional):
+                Reference to a modem response instance.
+                Defaults to None.
+
+        Returns:
+            bool: True on success, False on failure
+        """
+
+    async def socket_config_extended(self,
+        ctx_id: int,
+        ring_mode: WalterModemSocketRingMode = WalterModemSocketRingMode.DATA_AMOUNT,
+        recv_mode: WalterModemSocketRecvMode = WalterModemSocketRecvMode.TEXT_OR_RAW,
+        keepalive: int = 60,
+        listen_auto_resp: bool = False,
+        send_mode: WalterModemSocketSendMode = WalterModemSocketSendMode.TEXT_OR_RAW,
+        rsp: ModemRsp = None
+    ) -> bool:
+        """Provided by the SocketMixin
+
+        ---
+
+        Configure a socket's extended parameters.
+
+        Args:
+            ctx_id (int):
+                Context identifier (1-6)
+            ring_mode (int, optional):
+                Format of the ring notification.
+                Defaults to WalterModemSocketRingMode.DATA_AMOUNT.
+            recv_mode (int, optional):
+                Data recv mode of the socket.
+                Defaults to WalterModemSocketRecvMode.TEXT_OR_RAW.
+            keepalive (int, optional):
+                KeepAlive time (currently unused).
+                Defaults to 60.
+            listen_auto_resp (bool, optional):
+                Whether to auto accept incoming connections.
+                Defaults to False.
+            send_mode (int, optional):
+                Data format when sending data.
+                Defaults to WalterModemSocketSendMode.TEXT_OR_RAW.
+            rsp (ModemRsp, optional):
+                Reference to a modem response instance.
+                Defaults to None.
+
+        Returns:
+            bool: True on success, False on failure
+        """
+
     async def socket_close(self,
         ctx_id: int,
         rsp: ModemRsp | None = None
