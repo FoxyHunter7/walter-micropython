@@ -311,10 +311,9 @@ class SocketMixin(ModemCore):
 
         return await self._run_cmd(
             rsp=rsp,
-            at_cmd='AT+SQNSSENDEXT={},{},{},{},{}'.format(
+            at_cmd='AT+SQNSSENDEXT={},{},{}{}'.format(
                 ctx_id, length, rai,
-                modem_string(remote_addr) if remote_addr is not None else '',
-                remote_port
+                f',{remote_addr},{remote_port}' if remote_addr is not None and remote_port is not None else ''
             ),
             at_rsp=b'OK',
             cmd_type=WalterModemCmdType.DATA_TX_WAIT,
