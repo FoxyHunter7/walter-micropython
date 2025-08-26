@@ -1,10 +1,13 @@
 import micropython # type: ignore
-micropython.opt_level(1)
+micropython.opt_level(0)
+
+import machine # type: ignore
 """
 Set the MicroPython opt level.
 See: https://docs.micropython.org/en/latest/library/micropython.html#micropython.opt_level
 """
 
+import time
 import asyncio
 import esp32 # type: ignore
 import network # type: ignore
@@ -40,10 +43,6 @@ The modem response object that is (re-)used
 when we need information from the modem.
 """
 
-socket_id: int
-"""
-Variable to store the socket_id once made.
-"""
 
 async def wait_for_network_reg_state(timeout: int, *states: WalterModemNetworkRegState) -> bool:
     """
@@ -108,7 +107,7 @@ async def lte_connect(_retry: bool = False) -> bool:
         rat = modem_rsp.rat
 
         if _retry:
-            print('    - Failed to connect using LTE-M and NB-IoT, no connection possible')
+            print('    - Failed tsocketo connect using LTE-M and NB-IoT, no connection possible')
             
             if rat != WalterModemRat.LTEM:
                 if not await modem.set_rat(WalterModemRat.LTEM):
@@ -170,10 +169,11 @@ async def lte_transmit(socket_id: int, address: str, port: int, buffer: bytearra
 
     :return bool: True on success, False on failure
     """
-    if not await modem.socket_connect(
-        remote_host=address,
+    modem.uart_debug = True
+    if not await modem.socket_dial(
+        ctx_id=socket_id,
+        remote_addr=address,
         remote_port=port,
-        socket_id=socket_id,
         local_port=port
     ):
         print('  - Failed to connect to UDP socket')
@@ -182,9 +182,8 @@ async def lte_transmit(socket_id: int, address: str, port: int, buffer: bytearra
     print(f'  - Connected to UDP server: {address}:{port}')
 
     if not await modem.socket_send(
-        data=buffer,
-        socket_id=1,
-        rai=WalterModemRai.NO_INFO
+        ctx_id=socket_id,
+        data=buffer
     ):
         print('  - Failed to transmit to UDP socket')
         return False
@@ -313,8 +312,6 @@ async def setup():
     print('Find your walter at: https://walterdemo.quickspot.io/')
     print('Walter\'s MAC is: %s'
           % ubinascii.hexlify(network.WLAN().config('mac'),':').decode(), end='\n\n')
-    
-    await modem.begin()
 
     if not await modem.check_comm():
         print('Modem communication error')
@@ -341,10 +338,11 @@ async def setup():
     if not await lte_connect():
         return False
    
-    print('Creating socket')
-    if await modem.socket_create(rsp=modem_rsp):
-        socket_id = modem_rsp.socket_id
-    else:
+    print('Configuring socket')
+    if not await modem.socket_config(
+        ctx_id=1,
+        pdp_ctx_id=0
+    ):
         print('Failed to create socket')
         return False
     
@@ -363,7 +361,7 @@ async def loop():
 
     print('Attempting to request a GNSS fix')
     gnss_fix = None
-    for i in range(5):
+    for i in range(1):
         if i > 0:
             print(f'  - trying again, run: {i+1}/5')
         await lte_disconnect()
@@ -461,7 +459,7 @@ async def loop():
 
     print('Transmitting data to server')
     await lte_transmit(
-        socket_id=socket_id,
+        socket_id=1,
         address=config.SERVER_ADDRESS,
         port=config.SERVER_PORT,
         buffer=data_buffer
@@ -469,20 +467,27 @@ async def loop():
 
 async def main():
     try:
-        if not await setup():
-            print('Failed to complete setup, raising runtime error to stop')
-            raise RuntimeError()
+        await modem.begin(uart_debug=True)
+
+        reset_cause = machine.reset_cause()
+        if reset_cause not in (
+            machine.DEEPSLEEP_RESET,
+            machine.WDT_RESET,
+            machine.HARD_RESET
+        ):
+            if not ( # Relying on short-circuiting
+                await setup()
+            ):
+                raise Exception('Failure in setup of persistent configurations')
         
-        while True:
-            await loop()
-            print(f'sleeping for {config.SLEEP_TIME}sec')
-            await asyncio.sleep(config.SLEEP_TIME)
+        await loop()
+        modem.sleep(sleep_time_ms=config.SLEEP_TIME * 1000)
+        
     except Exception as err:
-        print('ERROR: (boot.py, main): ')
+        print('Exception caught: ')
         sys.print_exception(err)
-        print(f'Waiting {config.SLEEP_TIME} seconds before exiting')
-        # Sleep a while to prevent getting stuck in an infite crash loop
-        # And give time for the serial over usb to function
-        await asyncio.sleep(config.SLEEP_TIME)
+        print('=======\nHard resetting in 5sec...')
+        time.sleep(5)
+        machine.reset()
 
 asyncio.run(main())
