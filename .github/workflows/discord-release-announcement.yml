@@ -22,11 +22,12 @@ jobs:
             local text="$1"
             echo "$text" | perl -pe '
               s{
-                (\[[^\[\]]*\])    # match [text]
-                \(               # literal (
-                (https?://[^\)]+) # URL inside parentheses
-                \)               # literal )
-              }{$1."("."<".$2.">".")"}eg;
+                \]\(           # literal ](
+                (https?://     # capture URL starting with http or https
+                  [^)\s]+      # URL characters until ) or whitespace
+                )
+                \)             # literal )
+              }{"](<".$1.">)"}eg;
             '
           }
 
