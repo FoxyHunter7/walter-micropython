@@ -17,8 +17,25 @@ jobs:
           RELEASE_URL: ${{ github.event.release.html_url }}
           RELEASE_BODY: ${{ github.event.release.body }}
         run: |
-          MESSAGE=$(printf "New WalterModem release for MicroPython: **%s**\nTag: %s\nURL: %s\n\n%s" \
-            "$RELEASE_NAME" "$RELEASE_TAG" "$RELEASE_URL" "$RELEASE_BODY")
-          PAYLOAD=$(printf '%s' "$MESSAGE" | jq -Rs '{content: .}')
+          PAYLOAD=$(jq -nc \
+            --arg title "New WalterModem release: $RELEASE_NAME" \
+            --arg description "$RELEASE_BODY" \
+            --arg url "$RELEASE_URL" \
+            '{
+              embeds: [{
+                title: $title,
+                description: $description,
+                url: $url,
+                color: 5814783,
+                fields: [
+                  {
+                    name: "Tag",
+                    value: $ARGS.named.tag,
+                    inline: true
+                  }
+                ]
+              }]
+            }' \
+            --arg tag "$RELEASE_TAG")
           
           curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
