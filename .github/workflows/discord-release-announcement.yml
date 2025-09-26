@@ -18,6 +18,18 @@ jobs:
           RELEASE_URL: ${{ github.event.release.html_url }}
           RELEASE_BODY: ${{ github.event.release.body }}
         run: |
+          wrap_markdown_urls_only() {
+            local text="$1"
+            echo "$text" | perl -pe '
+              s{
+                (\[[^\[\]]*\])    # match [text]
+                \(               # literal (
+                (https?://[^\)]+) # URL inside parentheses
+                \)               # literal )
+              }{$1."("."<".$2.">".")"}eg;
+            '
+          }
+
           MESSAGE=$(printf "%s\n" \
             "# New MicroPython WalterModem release: $RELEASE_NAME" \
             "- **TAG:** $RELEASE_TAG" \
@@ -26,6 +38,9 @@ jobs:
             "---" \
             "$RELEASE_BODY"
           )
+
+          # Wrap URLs inside markdown links with <> to prevent discord auto-embed
+          MESSAGE=$(wrap_markdown_urls_only "$MESSAGE")
 
           MAX_LEN=2000
 
