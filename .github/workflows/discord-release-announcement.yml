@@ -17,14 +17,12 @@ jobs:
         RELEASE_URL: ${{ github.event.release.html_url }}
         RELEASE_BODY: ${{ github.event.release.body }}
       run: |
-        MESSAGE="# New **WalterModem MicroPython** release: $RELEASE_NAME\nTag: $RELEASE_TAG\nURL: $RELEASE_URL\n\n$RELEASE_BODY"
+        MESSAGE=$'# New WalterModem MicroPython release: '"$RELEASE_NAME"$'\nTag: '"$RELEASE_TAG"$'\nURL: '"$RELEASE_URL"$'\n\n'"$RELEASE_BODY"
 
-        # Discord max message length limit
         MAX_LEN=2000
 
         send_message() {
-          MSG="$1"
-          PAYLOAD=$(jq -n --arg content "$MSG" '{content: $content}')
+          PAYLOAD=$(jq -n --arg content "$1" '{content: $content}')
           curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
         }
 
@@ -34,9 +32,24 @@ jobs:
         else
           START=0
           while [ $START -lt $LEN ]; do
-            END=$((START + MAX_LEN))
-            PART=${MESSAGE:START:MAX_LEN}
+            SUB=${MESSAGE:START:MAX_LEN}
+
+            SPLIT_POS=$(echo "$SUB" | awk '
+              {
+                for(i=length($0); i>0; i--) {
+                  c=substr($0,i,1);
+                  if(c=="\n" || c==" ") {print i; exit}
+                }
+              }
+            ')
+
+            if [ -z "$SPLIT_POS" ] || [ "$SPLIT_POS" -eq 0 ]; then
+              SPLIT_POS=$MAX_LEN
+            fi
+
+            PART=${MESSAGE:START:SPLIT_POS}
+
             send_message "$PART"
-            START=$END
+            START=$((START + SPLIT_POS))
           done
         fi
