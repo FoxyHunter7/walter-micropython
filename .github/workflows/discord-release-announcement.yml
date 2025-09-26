@@ -17,39 +17,58 @@ jobs:
         RELEASE_URL: ${{ github.event.release.html_url }}
         RELEASE_BODY: ${{ github.event.release.body }}
       run: |
-        MESSAGE=$'# New WalterModem MicroPython release: '"$RELEASE_NAME"$'\nTag: '"$RELEASE_TAG"$'\nURL: '"$RELEASE_URL"$'\n\n'"$RELEASE_BODY"
-
+        # Compose full message text using real newlines
+        MESSAGE=$(cat <<EOF
+New MicroPython WalterModem release: $RELEASE_NAME
+Tag: $RELEASE_TAG
+URL: $RELEASE_URL
+    
+$RELEASE_BODY
+EOF
+        )
+    
+        # Discord max message length limit
         MAX_LEN=2000
-
+    
         send_message() {
-          PAYLOAD=$(jq -n --arg content "$1" '{content: $content}')
+          MSG="$1"
+          PAYLOAD=$(jq -n --arg content "$MSG" '{content: $content}')
           curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
         }
-
-        LEN=${#MESSAGE}
-        if [ $LEN -le $MAX_LEN ]; then
-          send_message "$MESSAGE"
-        else
-          START=0
-          while [ $START -lt $LEN ]; do
-            SUB=${MESSAGE:START:MAX_LEN}
-
-            SPLIT_POS=$(echo "$SUB" | awk '
-              {
-                for(i=length($0); i>0; i--) {
-                  c=substr($0,i,1);
-                  if(c=="\n" || c==" ") {print i; exit}
+    
+        # Function to split the message on newlines if too long
+        split_and_send() {
+          local remaining="$1"
+    
+          while [ ${#remaining} -gt $MAX_LEN ]; do
+            # Find the last newline before MAX_LEN
+            local chunk=${remaining:0:$MAX_LEN}
+            local split_at=$(echo "$chunk" | awk '{
+              pos = 0
+              for (i = 1; i <= length($0); i++) {
+                if (substr($0, i, 1) == "\n") {
+                  pos = i
                 }
               }
-            ')
-
-            if [ -z "$SPLIT_POS" ] || [ "$SPLIT_POS" -eq 0 ]; then
-              SPLIT_POS=$MAX_LEN
+              print pos
+            }')
+    
+            # Fallback: no newline found, split hard
+            if [ "$split_at" -eq 0 ]; then
+              split_at=$MAX_LEN
             fi
-
-            PART=${MESSAGE:START:SPLIT_POS}
-
-            send_message "$PART"
-            START=$((START + SPLIT_POS))
+    
+            local part="${remaining:0:$split_at}"
+            send_message "$part"
+    
+            # Remove the sent part from remaining
+            remaining="${remaining:$split_at}"
           done
-        fi
+    
+          # Send the final part
+          if [ -n "$remaining" ]; then
+            send_message "$remaining"
+          fi
+        }
+    
+        split_and_send "$MESSAGE"
