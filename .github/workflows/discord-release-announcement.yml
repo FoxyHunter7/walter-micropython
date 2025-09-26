@@ -12,6 +12,7 @@ jobs:
       - name: Send Discord message
         shell: bash
         env:
+          TITLE_NAME: "MicroPython WalterModem"
           WEBHOOK_URL: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL }}
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -57,7 +58,7 @@ jobs:
           }
 
           MESSAGE=$(printf "%s\n" \
-            "# New MicroPython WalterModem release: $RELEASE_NAME" \
+            "# New $TITLE_NAME release: $RELEASE_NAME" \
             "- **TAG:** $RELEASE_TAG" \
             "- **URL:** <$RELEASE_URL>" \
             "" \
@@ -77,12 +78,22 @@ jobs:
             curl -s -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK_URL"
           }
 
+
           split_and_send() {
             local remaining="$1"
+            local is_first_message=true
 
-            while [ "${#remaining}" -gt "$MAX_LEN" ]; do
-              local chunk="${remaining:0:$MAX_LEN}"
+            while [ "${#remaining}" -gt "$MAX_LEN" ] || ( [ "$is_first_message" = false ] && [ "${#remaining}" -gt $((MAX_LEN - SILENT_LEN)) ] ); do
+              local chunk_size=$MAX_LEN
+              local chunk
               local split_at
+
+              # For non-first messages, account for @silent prefix
+              if [ "$is_first_message" = false ]; then
+                chunk_size=$((MAX_LEN - SILENT_LEN))
+              fi
+
+              chunk="${remaining:0:$chunk_size}"
 
               split_at=$(awk -v str="$chunk" '
                 BEGIN {
@@ -97,15 +108,26 @@ jobs:
               )
 
               if [ "$split_at" -eq 0 ]; then
-                split_at=$MAX_LEN
+                split_at=$chunk_size
               fi
 
               local part="${remaining:0:$split_at}"
+
+              # Add @silent prefix for non-first messages
+              if [ "$is_first_message" = false ]; then
+                part="${SILENT_PREFIX}${part}"
+              fi
+
               send_message "$part"
               remaining="${remaining:$split_at}"
+              is_first_message=false
             done
 
             if [ -n "$remaining" ]; then
+              # Add @silent prefix for non-first messages
+              if [ "$is_first_message" = false ]; then
+                remaining="${SILENT_PREFIX}${remaining}"
+              fi
               send_message "$remaining"
             fi
           }
