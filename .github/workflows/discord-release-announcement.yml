@@ -9,31 +9,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send Discord webhook notification
-        env:
-          WEBHOOK_URL: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL }}
-          RELEASE_NAME: ${{ github.event.release.name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_URL: ${{ github.event.release.html_url }}
-          RELEASE_BODY: ${{ github.event.release.body }}
-        run: |
-          PAYLOAD=$(jq -nc \
-            --arg title "New WalterModem release: $RELEASE_NAME" \
-            --arg description "$RELEASE_BODY" \
-            --arg url "$RELEASE_URL" \
-            --arg tag "$RELEASE_TAG" \
-            '{
-              embeds: [{
-                title: $title,
-                description: $description,
-                url: $url,
-                color: 99975,
-                fields: [{
-                  name: "Repo Tag",
-                  value: $tag,
-                  inline: true
-                }]
-              }]
-            }')
-          
+    - name: Send Discord notification as plain message
+      env:
+        WEBHOOK_URL: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL }}
+        RELEASE_NAME: ${{ github.event.release.name }}
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+        RELEASE_URL: ${{ github.event.release.html_url }}
+        RELEASE_BODY: ${{ github.event.release.body }}
+      run: |
+        MESSAGE="# New **WalterModem MicroPython** release: $RELEASE_NAME\nTag: $RELEASE_TAG\nURL: $RELEASE_URL\n\n$RELEASE_BODY"
+
+        # Discord max message length limit
+        MAX_LEN=2000
+
+        send_message() {
+          MSG="$1"
+          PAYLOAD=$(jq -n --arg content "$MSG" '{content: $content}')
           curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
+        }
+
+        LEN=${#MESSAGE}
+        if [ $LEN -le $MAX_LEN ]; then
+          send_message "$MESSAGE"
+        else
+          START=0
+          while [ $START -lt $LEN ]; do
+            END=$((START + MAX_LEN))
+            PART=${MESSAGE:START:MAX_LEN}
+            send_message "$PART"
+            START=$END
+          done
+        fi
