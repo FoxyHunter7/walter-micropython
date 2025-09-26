@@ -28,15 +28,12 @@ jobs:
                 description: $description,
                 url: $url,
                 color: 99975,
-                fields: [
-                  {
-                    name: "Repo Tag",
-                    value: $ARGS.named.tag,
-                    inline: true
-                  }
-                ]
+                fields: [{
+                  name: "Repo Tag",
+                  value: $tag,
+                  inline: true
+                }]
               }]
             }')
           
           curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
-
