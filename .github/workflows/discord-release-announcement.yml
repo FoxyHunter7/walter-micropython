@@ -11,12 +11,15 @@ jobs:
     steps:
       - name: Curl Webhook
         env:
-          WEBHOOK_URL: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL }}
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_URL: ${{ github.event.release.html_url }}
           RELEASE_BODY: ${{ github.event.release.body }}
         run: |
-          payload=$(jq -n --arg content "New WalterModem release for MicroPython: **${RELEASE_NAME}**\nTag: ${RELEASE_TAG}\nURL: ${RELEASE_URL}\n\n${RELEASE_BODY}" '{content: $content}')
-          curl -H "Content-Type: application/json" -X POST -d "$payload" $WEBHOOK_URL
+          # Ensure backslashes are escaped in release body for JSON
+          SAFE_BODY=$(printf '%s' "$RELEASE_BODY" | sed 's/\\/\\\\/g')
+          MESSAGE="New WalterModem release for MicroPython: **${RELEASE_NAME}**\nTag: ${RELEASE_TAG}\nURL: ${RELEASE_URL}\n\n${SAFE_BODY}"
+          payload=$(jq -nc --arg content "$MESSAGE" '{content: $content}')
+          curl -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK_URL"
           
