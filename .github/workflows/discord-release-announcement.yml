@@ -18,17 +18,9 @@ jobs:
           RELEASE_URL: ${{ github.event.release.html_url }}
           RELEASE_BODY: ${{ github.event.release.body }}
         run: |
-          wrap_markdown_urls_only() {
+          wrap_markdown_urls() {
             local text="$1"
-            echo "$text" | perl -pe '
-              s{
-                \]\(           # literal ](
-                (https?://     # capture URL starting with http or https
-                  [^)\s]+      # URL characters until ) or whitespace
-                )
-                \)             # literal )
-              }{"](<".$1.">)"}eg;
-            '
+            echo "$text" | perl -pe 's{\]\((https?://[^)\s]+)\)}{"](<".$1.">)"}eg;'
           }
 
           MESSAGE=$(printf "%s\n" \
@@ -41,7 +33,7 @@ jobs:
           )
 
           # Wrap URLs inside markdown links with <> to prevent discord auto-embed
-          MESSAGE=$(wrap_markdown_urls_only "$MESSAGE")
+          MESSAGE=$(wrap_markdown_urls "$MESSAGE")
 
           MAX_LEN=2000
 
