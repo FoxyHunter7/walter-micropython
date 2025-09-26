@@ -26,10 +26,10 @@ jobs:
                 title: $title,
                 description: $description,
                 url: $url,
-                color: 5814783,
+                color: 99975,
                 fields: [
                   {
-                    name: "Tag",
+                    name: "Repo Tag",
                     value: $ARGS.named.tag,
                     inline: true
                   }
