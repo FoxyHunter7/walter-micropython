@@ -26,8 +26,8 @@ jobs:
 
             while (( i < len )); do
               if [[ "${input:i:2}" == "](" && ( "${input:i+2:7}" == "http://" || "${input:i+2:8}" == "https://" ) ]]; then
-                # append ']('
-                output+="${input:i:2}("
+                # Append '](' without adding extra '('
+                output+="${input:i:2}"
                 i=$((i+2))
                 output+="<"
                 local depth=1
