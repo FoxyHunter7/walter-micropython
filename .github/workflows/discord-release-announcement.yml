@@ -1,0 +1,19 @@
+name: Discord announcement on release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  discord_announcement:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Curl Webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL }}
+        run: |
+          curl -H "Content-Type: application/json" -X POST -d '{
+            "content": "New release published: **${{ github.event.release.name }}**\nTag: ${{ github.event.release.tag_name }}\nURL: ${{ github.event.release.html_url }}\n\n${{ github.event.release.body }}"
+          }' $WEBHOOK_URL
+          
