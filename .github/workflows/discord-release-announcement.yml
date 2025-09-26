@@ -9,66 +9,60 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Send Discord notification as plain message
-      env:
-        WEBHOOK_URL: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL }}
-        RELEASE_NAME: ${{ github.event.release.name }}
-        RELEASE_TAG: ${{ github.event.release.tag_name }}
-        RELEASE_URL: ${{ github.event.release.html_url }}
-        RELEASE_BODY: ${{ github.event.release.body }}
-      run: |
-        # Compose full message text using real newlines
-        MESSAGE=$(cat <<EOF
-New MicroPython WalterModem release: $RELEASE_NAME
-Tag: $RELEASE_TAG
-URL: $RELEASE_URL
-    
-$RELEASE_BODY
-EOF
-        )
-    
-        # Discord max message length limit
-        MAX_LEN=2000
-    
-        send_message() {
-          MSG="$1"
-          PAYLOAD=$(jq -n --arg content "$MSG" '{content: $content}')
-          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
-        }
-    
-        # Function to split the message on newlines if too long
-        split_and_send() {
-          local remaining="$1"
-    
-          while [ ${#remaining} -gt $MAX_LEN ]; do
-            # Find the last newline before MAX_LEN
-            local chunk=${remaining:0:$MAX_LEN}
-            local split_at=$(echo "$chunk" | awk '{
-              pos = 0
-              for (i = 1; i <= length($0); i++) {
-                if (substr($0, i, 1) == "\n") {
-                  pos = i
+      - name: Send Discord notification as plain message
+        shell: bash
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          MESSAGE=$( 
+            echo "# New MicroPython WalterModem release: $RELEASE_NAME"
+            echo "- **TAG:** $RELEASE_TAG"
+            echo "- **URL:** $RELEASE_URL"
+            echo ""
+            echo "---"
+            echo "$RELEASE_BODY"
+          )
+
+          # Discord content length limit
+          MAX_LEN=2000
+
+          send_message() {
+            MSG="$1"
+            PAYLOAD=$(jq -n --arg content "$MSG" '{content: $content}')
+            curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
+          }
+
+          split_and_send() {
+            local remaining="$1"
+
+            while [ ${#remaining} -gt $MAX_LEN ]; do
+              local chunk=${remaining:0:$MAX_LEN}
+              local split_at=$(echo "$chunk" | awk '{
+                pos = 0
+                for (i = 1; i <= length($0); i++) {
+                  if (substr($0, i, 1) == "\n") {
+                    pos = i
+                  }
                 }
-              }
-              print pos
-            }')
-    
-            # Fallback: no newline found, split hard
-            if [ "$split_at" -eq 0 ]; then
-              split_at=$MAX_LEN
+                print pos
+              }')
+
+              if [ "$split_at" -eq 0 ]; then
+                split_at=$MAX_LEN
+              fi
+
+              local part="${remaining:0:$split_at}"
+              send_message "$part"
+              remaining="${remaining:$split_at}"
+            done
+
+            if [ -n "$remaining" ]; then
+              send_message "$remaining"
             fi
-    
-            local part="${remaining:0:$split_at}"
-            send_message "$part"
-    
-            # Remove the sent part from remaining
-            remaining="${remaining:$split_at}"
-          done
-    
-          # Send the final part
-          if [ -n "$remaining" ]; then
-            send_message "$remaining"
-          fi
-        }
-    
-        split_and_send "$MESSAGE"
+          }
+
+          split_and_send "$MESSAGE"
