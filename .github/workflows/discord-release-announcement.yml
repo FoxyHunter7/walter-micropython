@@ -12,8 +12,11 @@ jobs:
       - name: Curl Webhook
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK_URL }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_BODY: ${{ github.event.release.body }}
         run: |
-          curl -H "Content-Type: application/json" -X POST -d '{
-            "content": "New release published: **${{ github.event.release.name }}**\nTag: ${{ github.event.release.tag_name }}\nURL: ${{ github.event.release.html_url }}\n\n${{ github.event.release.body }}"
-          }' $WEBHOOK_URL
+          payload=$(jq -n --arg content "New WalterModem release for MicroPython: **${RELEASE_NAME}**\nTag: ${RELEASE_TAG}\nURL: ${RELEASE_URL}\n\n${RELEASE_BODY}" '{content: $content}')
+          curl -H "Content-Type: application/json" -X POST -d "$payload" $WEBHOOK_URL
           
