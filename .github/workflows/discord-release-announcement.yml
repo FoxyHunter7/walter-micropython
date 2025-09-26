@@ -21,6 +21,7 @@ jobs:
             --arg title "New WalterModem release: $RELEASE_NAME" \
             --arg description "$RELEASE_BODY" \
             --arg url "$RELEASE_URL" \
+            --arg tag "$RELEASE_TAG" \
             '{
               embeds: [{
                 title: $title,
@@ -35,7 +36,7 @@ jobs:
                   }
                 ]
               }]
-            }' \
-            --arg tag "$RELEASE_TAG")
+            }')
           
           curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
+
