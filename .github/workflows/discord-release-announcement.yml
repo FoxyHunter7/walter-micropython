@@ -33,7 +33,7 @@ jobs:
           MESSAGE=$(printf "%s\n" \
             "# New MicroPython WalterModem release: $RELEASE_NAME" \
             "- **TAG:** $RELEASE_TAG" \
-            "- **URL:** $RELEASE_URL" \
+            "- **URL:** <$RELEASE_URL>" \
             "" \
             "---" \
             "$RELEASE_BODY"
