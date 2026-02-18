@@ -16,10 +16,76 @@ from walter_modem import Modem
 from walter_modem.coreEnums import *
 from walter_modem.coreStructs import *
 from walter_modem.mixins.default_sim_network import *
+from walter_modem.mixins.default_pdp import *
 from walter_modem.mixins.socket import *
 from walter_modem.mixins.gnss import *
 
-import config # type: ignore
+#region CONFIG VARIABLES
+
+# IMPORTANT
+# This is an example sketch with verbose comments and logging,
+# in production codde such verbose comments could be left out to reduce codesize.
+
+CELL_APN = ''
+"""
+The cellular Access Point Name (APN).
+Set to the APN provided by your network provider.
+Leave blank for automatic APN detection only if your provider supports it
+"""
+
+APN_USERNAME = ''
+"""
+The username for APN authentication.
+Typically, this is not required and should be left blank.
+Only provide a username if your network provider explicitly mandates it.
+"""
+
+APN_PASSWORD = ''
+"""
+The password for APN authentication.
+This is generally unnecessary and should remain blank.
+Set a password only if it is specifically required by your network provider.
+"""
+
+AUTHENTICATION_PROTOCOL = WalterModemPDPAuthProtocol.NONE
+"""
+The authentication protocol to use if requiren.
+Leave as none when no username/password is set.
+"""
+
+SERVER_ADDRESS = 'walterdemo.quickspot.io'
+"""
+The address of the Walter Demo server.
+"""
+
+SERVER_PORT = 1999
+"""
+The UDP port of the Walter Demo server.
+"""
+
+SIM_PIN = None
+"""
+Optional: Set this only if your SIM card requires a PIN for activation. 
+Most IoT SIMs do not need this.
+"""
+
+PACKET_SIZE = 29
+"""
+The size in bytes of hte uploaded data packet.
+"""
+
+MAX_GNSS_CONFIDENCE = 255.0
+"""
+The maximum GNSS confidence threshold.
+All GNSS fixes with a confidence value below this number are considered valid.
+"""
+
+SLEEP_TIME = 60
+"""
+The time (in seconds) to sleep between readouts
+"""
+
+#endregion
 
 modem = Modem(SocketMixin, GNSSMixin, load_default_power_saving_mixin=False)
 """
@@ -204,7 +270,7 @@ async def unlock_sim() -> bool:
 
     # Give the modem time to detect the SIM
     await asyncio.sleep(2)
-    if await modem.unlock_sim(pin=config.SIM_PIN):
+    if await modem.unlock_sim(pin=SIM_PIN):
         print('  - SIM unlocked')
     else:
         print('  - Failed to unlock SIM card')
@@ -320,20 +386,20 @@ async def setup():
         print('Modem communication error')
         return False
     
-    if config.SIM_PIN != None and not await unlock_sim():
+    if SIM_PIN != None and not await unlock_sim():
         return False
     
     if not await modem.pdp_context_create(
-        apn=config.CELL_APN,
+        apn=CELL_APN,
         rsp=modem_rsp
     ):
         print('Failed to create socket')
         return False
    
-    if config.APN_USERNAME and not await modem.pdp_set_auth_params(
-        protocol=config.AUTHENTICATION_PROTOCOL,
-        user_id=config.APN_USERNAME,
-        password=config.APN_PASSWORD
+    if APN_USERNAME and not await modem.pdp_set_auth_params(
+        protocol=AUTHENTICATION_PROTOCOL,
+        user_id=APN_USERNAME,
+        password=APN_PASSWORD
     ):
         print('Failed to set PDP context authentication paramaters')
 
@@ -380,13 +446,13 @@ async def loop():
         print('  - Waiting for GNSS fix')
         gnss_fix = await modem.gnss_wait_for_fix()
 
-        if gnss_fix.estimated_confidence <= config.MAX_GNSS_CONFIDENCE:
+        if gnss_fix.estimated_confidence <= MAX_GNSS_CONFIDENCE:
             print(f'  - Fix success, estimated confidence: {gnss_fix.estimated_confidence}')
             break
 
-    if gnss_fix.estimated_confidence > config.MAX_GNSS_CONFIDENCE:
+    if gnss_fix.estimated_confidence > MAX_GNSS_CONFIDENCE:
         print(f'  - GNSS fix confidence ({gnss_fix.estimated_confidence:.2f}) '
-              f'exceeds max confidence of {config.MAX_GNSS_CONFIDENCE}')
+              f'exceeds max confidence of {MAX_GNSS_CONFIDENCE}')
         print('  - Not accurate enough, values will not be used')
         
 
@@ -406,7 +472,7 @@ async def loop():
         lat: float = gnss_fix.latitude
         lon: float = gnss_fix.longitude
 
-        if gnss_fix.estimated_confidence > config.MAX_GNSS_CONFIDENCE:
+        if gnss_fix.estimated_confidence > MAX_GNSS_CONFIDENCE:
             gnss_fix.sats = []
             lat = 0.0
             lon = 0.0
@@ -462,8 +528,8 @@ async def loop():
     print('Transmitting data to server')
     await lte_transmit(
         socket_id=socket_id,
-        address=config.SERVER_ADDRESS,
-        port=config.SERVER_PORT,
+        address=SERVER_ADDRESS,
+        port=SERVER_PORT,
         buffer=data_buffer
     )
 
@@ -475,14 +541,14 @@ async def main():
         
         while True:
             await loop()
-            print(f'sleeping for {config.SLEEP_TIME}sec')
-            await asyncio.sleep(config.SLEEP_TIME)
+            print(f'sleeping for {SLEEP_TIME}sec')
+            await asyncio.sleep(SLEEP_TIME)
     except Exception as err:
         print('ERROR: (boot.py, main): ')
         sys.print_exception(err)
-        print(f'Waiting {config.SLEEP_TIME} seconds before exiting')
+        print(f'Waiting {SLEEP_TIME} seconds before exiting')
         # Sleep a while to prevent getting stuck in an infite crash loop
         # And give time for the serial over usb to function
-        await asyncio.sleep(config.SLEEP_TIME)
+        await asyncio.sleep(SLEEP_TIME)
 
 asyncio.run(main())
